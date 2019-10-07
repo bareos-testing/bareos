@@ -24,12 +24,160 @@ This chapter concentrates on things to do when updating an existing Bareos insta
 
 .. _bareos-current-releasenotes:
 
-.. _bareos-1826-releasenotes:
+.. _bareos-1924-releasenotes:
 
-.. _bareos-18.2.6:
+.. _bareos-19.2.4:
+
+Bareos-19.2
+-----------
+
+Bareos-19.2.4
+~~~~~~~~~~~~~
+
+General Information
+^^^^^^^^^^^^^^^^^^^
+
+.. list-table:: Bareos 19.2.4 Release Information
+   :header-rows: 0
+   :widths: auto
+
+   * - **Release Date**
+     - 1 December 2019
+   * - **Database Version**
+     -  2171
+   * - **URL**
+     - https://download.bareos.com/bareos/release/19.2/
+..
+   * - **Release Ticket**
+     - :issue:`0000`
+..
+   * - **LOC**
+     - 123456+ 12345-
+
+.. csv-table:: binary package availablility in the `bareos.com subscription repos <https://www.bareos.com/en/Subscription.html>`_
+   :header: "Distribution", "Architecture"
+   :widths: auto
+
+   CentOS_6, "x86_64"
+   CentOS_7, "x86_64"
+   Debian_8.0, "i586,x86_64"
+   Debian_9.0, "i586,x86_64"
+   Fedora_28, "x86_64"
+   Fedora_29, "x86_64"
+   FreeBSD_11.2, "x86_64"
+   MacOS, "x86_64"
+   RHEL_6, "x86_64"
+   RHEL_7, "x86_64"
+   SLE_12_SP3, "x86_64"
+   SLE_12_SP4, "x86_64"
+   SLE_15, "x86_64"
+   openSUSE_Leap_15.0, "x86_64"
+   Univention_4.3, "x86_64"
+   Windows, "32Bit, 64Bit"
+   xUbuntu_14.04, "i586,x86_64"
+   xUbuntu_16.04, "i586,x86_64"
+   xUbuntu_18.04, "x86_64"
+
+New Features
+^^^^^^^^^^^^
+* Updated documentation
+* |webui|: Restore a specific file version 
+
+Changed Features
+^^^^^^^^^^^^^^^^
+* Updated |webui| localization
+* A few PHP Warnings and Notices, JS and CSS errors have been removed
+* Restricted console profile examples for limited and read-only purposes have been added to the |webui| package
+* Improved Command ACL handling and error messages in the |webui|
+* Display a summary before performing a restore in the |webui|
+* New configuration parameter filetree_refresh_timeout has been added to configuration.ini file of the |webui| to set a custom timeout while refreshing the file tree (.bvfs_cache_update) in the restore module.
+
+Deprecated and Removed Features
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+* |webui|: Functionality of pre-selecting a backup client in the restore module has been removed
+
+Bugs Fixed
+^^^^^^^^^^
+* :issue:`1059`: Fix Webui spams Apache error_log with bconsole messages
+* :issue:`0000`: Fix Application Controller Plugin - CommandACLPlugin
+* :issue:`0000`: Fix overflowing top navigation bar content hiding tab navigation in some modules
+
+Updated Documentation
+^^^^^^^^^^^^^^^^^^^^^
+* :ref:`section-updating-bvfs-cache-frequently`
+* |webui| Command ACL Requirements: :ref:`section-webui-command-acl-requirements`
+* |webui| Access Control Configuration: :ref:`section-webui-access-control-configuration`
+* |webui| Restore: :ref:`section-webui-restore`
+* Developer Guide: :ref:`section-dev-webui-command-usage-in-modules`
+
+Internal Project Changes
+^^^^^^^^^^^^^^^^^^^^^^^^
+* todo
+
+
+.. _bareos-1827-releasenotes:
+
+.. _bareos-18.2.7:
 
 Bareos-18.2
 -----------
+
+Bareos-18.2.7
+~~~~~~~~~~~~~
+
+General Information
+^^^^^^^^^^^^^^^^^^^
+
+.. list-table:: Bareos 18.2.7 Release Information
+   :header-rows: 0
+   :widths: auto
+
+   * - **Release Date**
+     - 1 December 2019
+   * - **Database Version**
+     -  2171
+   * - **URL**
+     - https://download.bareos.com/bareos/release/18.2/
+..
+   * - **Release Ticket**
+     - :issue:`1040`
+..
+   * - **LOC**
+     - 123456+ 12345-
+
+.. csv-table:: binary package availablility in the `bareos.com subscription repos <https://www.bareos.com/en/Subscription.html>`_
+   :header: "Distribution", "Architecture"
+   :widths: auto
+
+   CentOS_6, "x86_64"
+   CentOS_7, "x86_64"
+   Debian_8.0, "i586,x86_64"
+   Debian_9.0, "i586,x86_64"
+   Fedora_28, "x86_64"
+   Fedora_29, "x86_64"
+   FreeBSD_11.2, "x86_64"
+   MacOS, "x86_64"
+   RHEL_6, "x86_64"
+   RHEL_7, "x86_64"
+   SLE_12_SP3, "x86_64"
+   SLE_12_SP4, "x86_64"
+   SLE_15, "x86_64"
+   openSUSE_Leap_15.0, "x86_64"
+   Univention_4.3, "x86_64"
+   Windows, "32Bit, 64Bit"
+   xUbuntu_14.04, "i586,x86_64"
+   xUbuntu_16.04, "i586,x86_64"
+   xUbuntu_18.04, "x86_64"
+
+Bugfixes and Changes
+^^^^^^^^^^^^^^^^^^^^
+* |webui|: Fix overflowing top navigation bar content
+* |webui|: Fix always active debug messages in error.log
+* |webui|: Bvfs cache update notification added
+
+.. _bareos-1826-releasenotes:
+
+.. _bareos-18.2.6:
 
 Bareos-18.2.6
 ~~~~~~~~~~~~~
