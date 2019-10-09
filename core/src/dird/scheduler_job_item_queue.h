@@ -1,7 +1,7 @@
 /*
    BAREOS® - Backup Archiving REcovery Open Sourced
 
-   Copyright (C) 2018-2018 Bareos GmbH & Co. KG
+   Copyright (C) 2019-2019 Free Software Foundation Europe e.V.
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -19,15 +19,33 @@
    02110-1301, USA.
 */
 
-#ifndef BAREOS_DIRD_SCHEDULER_H_
-#define BAREOS_DIRD_SCHEDULER_H_
+#ifndef BAREOS_SRC_DIRD_SCHEDULER_JOB_ITEM_QUEUE_H_
+#define BAREOS_SRC_DIRD_SCHEDULER_JOB_ITEM_QUEUE_H_
+
+#include <queue>
+#include <vector>
 
 namespace directordaemon {
 
-JobControlRecord* SchedulerWaitForNextJob(char* one_shot_job_to_run);
-bool IsDoyInLastWeek(int year, int doy);
-void TermScheduler();
-void InvalidateSchedules();
+class RunResource;
+class JobResource;
 
-} /* namespace directordaemon */
-#endif  // BAREOS_DIRD_SCHEDULER_H_
+struct JobItem {
+  RunResource* run{nullptr};
+  JobResource* job{nullptr};
+  time_t runtime{0};
+  int priority{10};
+};
+
+class PrioritiseJobItems {
+ public:
+  bool operator()(const JobItem& a, const JobItem& b) const;
+};
+
+using PrioritisedJobItemsQueue =
+    std::priority_queue<JobItem, std::vector<JobItem>, PrioritiseJobItems>;
+
+
+}  // namespace directordaemon
+
+#endif  // BAREOS_SRC_DIRD_SCHEDULER_JOB_ITEM_QUEUE_H_

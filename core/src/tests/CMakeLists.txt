@@ -406,3 +406,18 @@ ENDIF()
 
 gtest_discover_tests(client-initiated-reconnect TEST_PREFIX gtest:)
 
+####### scheduler_job_item_queue  #####################################
+add_executable(scheduler_job_item_queue scheduler_job_item_queue.cc)
+
+target_link_libraries(scheduler_job_item_queue
+   dird_objects
+   bareos
+   bareosfind
+   bareoscats
+   bareossql
+   ${GTEST_LIBRARIES}
+   ${GTEST_MAIN_LIBRARIES}
+)
+
+gtest_discover_tests(scheduler_job_item_queue TEST_PREFIX gtest:)
+

@@ -33,9 +33,11 @@
  */
 
 #include "include/bareos.h"
+#include "dird/scheduler.h"
 #include "dird.h"
 #include "dird/dird_globals.h"
 #include "dird/job.h"
+#include "dird/scheduler_job_item_queue.h"
 #include "dird/storage.h"
 #include "lib/parse_conf.h"
 
@@ -43,31 +45,15 @@ namespace directordaemon {
 
 const int debuglevel = 200;
 
-/* Local variables */
-struct job_item {
-  RunResource* run;
-  JobResource* job;
-  time_t runtime;
-  int Priority;
-  dlink link; /* link for list */
-};
+static PrioritisedJobItemsQueue prioritised_job_item_queue;
 
-/* List of jobs to be run. They were scheduled in this hour or the next */
-static dlist* jobs_to_run; /* list of jobs to be run */
-
-/* Time interval in secs to sleep if nothing to be run */
 static int const next_check_secs = 60;
 
-/* Forward referenced subroutines */
 static void find_runs();
 static void add_job(JobResource* job,
                     RunResource* run,
                     time_t now,
                     time_t runtime);
-
-/* Imported subroutines */
-
-/* Imported variables */
 
 /**
  * called by reload_config to tell us that the schedules
@@ -86,20 +72,18 @@ void InvalidateSchedules(void) { schedules_invalidated = true; }
  *         Main Bareos Scheduler
  *
  */
-JobControlRecord* wait_for_next_job(char* one_shot_job_to_run)
+JobControlRecord* SchedulerWaitForNextJob(char* one_shot_job_to_run)
 {
   JobControlRecord* jcr;
   JobResource* job;
   RunResource* run;
   time_t now, prev;
   static bool first = true;
-  job_item* next_job = NULL;
 
-  Dmsg0(debuglevel, "Enter wait_for_next_job\n");
+  Dmsg0(debuglevel, "Enter SchedulerWaitForNextJob\n");
   if (first) {
     first = false;
     /* Create scheduled jobs list */
-    jobs_to_run = new dlist(next_job, &next_job->link);
     if (one_shot_job_to_run) { /* one shot */
       job = (JobResource*)my_config->GetResWithName(R_JOB, one_shot_job_to_run);
       if (!job) {
@@ -116,22 +100,14 @@ JobControlRecord* wait_for_next_job(char* one_shot_job_to_run)
    * next hour or so.
    */
 again:
-  while (jobs_to_run->empty()) {
+  while (prioritised_job_item_queue.empty()) {
     find_runs();
-    if (!jobs_to_run->empty()) { break; }
+    if (!prioritised_job_item_queue.empty()) { break; }
     Bmicrosleep(next_check_secs, 0); /* recheck once per minute */
   }
 
-  /*
-   * Pull the first job to run (already sorted by runtime and
-   *  Priority, then wait around until it is time to run it.
-   */
-  next_job = (job_item*)jobs_to_run->first();
-  jobs_to_run->remove(next_job);
-
-  if (!next_job) { /* we really should have something now */
-    Emsg0(M_ABORT, 0, _("Scheduler logic error\n"));
-  }
+  JobItem next_job = prioritised_job_item_queue.top();
+  prioritised_job_item_queue.pop();
 
   /* Now wait for the time to run the job */
   for (;;) {
@@ -139,11 +115,8 @@ again:
     /* discard scheduled queue and rebuild with new schedule objects. */
     LockJobs();
     if (schedules_invalidated) {
-      free(next_job);
-      while (!jobs_to_run->empty()) {
-        next_job = (job_item*)jobs_to_run->first();
-        jobs_to_run->remove(next_job);
-        free(next_job);
+      while (!prioritised_job_item_queue.empty()) {
+        prioritised_job_item_queue.pop();
       }
       schedules_invalidated = false;
       UnlockJobs();
@@ -151,7 +124,7 @@ again:
     }
     UnlockJobs();
     prev = now = time(NULL);
-    twait = next_job->runtime - now;
+    twait = next_job.runtime - now;
     if (twait <= 0) { /* time to run it */
       break;
     }
@@ -167,12 +140,10 @@ again:
   }
 
   jcr = new_jcr(sizeof(JobControlRecord), DirdFreeJcr);
-  run = next_job->run; /* pick up needed values */
-  job = next_job->job;
+  run = next_job.run; /* pick up needed values */
+  job = next_job.job;
 
   if (job->enabled && (!job->client || job->client->enabled)) {}
-
-  free(next_job);
 
   if (!job->enabled || (job->schedule && !job->schedule->enabled) ||
       (job->client && !job->client->enabled)) {
@@ -235,17 +206,14 @@ again:
 
   if (run->MaxRunSchedTime_set) { jcr->MaxRunSchedTime = run->MaxRunSchedTime; }
 
-  Dmsg0(debuglevel, "Leave wait_for_next_job()\n");
+  Dmsg0(debuglevel, "Leave SchedulerWaitForNextJob()\n");
   return jcr;
 }
 
 /**
  * Shutdown the scheduler
  */
-void TermScheduler()
-{
-  if (jobs_to_run) { delete jobs_to_run; }
-}
+void TermScheduler() {}
 
 /**
  * check if given day of year is in last week of the month in the current year
@@ -390,34 +358,17 @@ static void add_job(JobResource* job,
                     time_t now,
                     time_t runtime)
 {
-  job_item* ji;
-  bool inserted = false;
-  /*
-   * Don't run any job that ran less than a minute ago, but
-   *  do run any job scheduled less than a minute ago.
-   */
   if (((runtime - run->last_run) < 61) || ((runtime + 59) < now)) { return; }
-  /* accept to run this job */
-  job_item* je = (job_item*)malloc(sizeof(job_item));
-  je->run = run;
-  je->job = job;
-  je->runtime = runtime;
-  if (run->Priority) {
-    je->Priority = run->Priority;
-  } else {
-    je->Priority = job->Priority;
-  }
 
-  /* Add this job to the wait queue in runtime, priority sorted order */
-  foreach_dlist (ji, jobs_to_run) {
-    if (ji->runtime > je->runtime ||
-        (ji->runtime == je->runtime && ji->Priority > je->Priority)) {
-      jobs_to_run->InsertBefore(je, ji);
-      inserted = true;
-      break;
-    }
+  JobItem job_item;
+  job_item.run = run;
+  job_item.job = job;
+  job_item.runtime = runtime;
+  if (run->Priority) {
+    job_item.priority = run->Priority;
+  } else {
+    job_item.priority = job->Priority;
   }
-  /* If place not found in queue, append it */
-  if (!inserted) { jobs_to_run->append(je); }
+  prioritised_job_item_queue.push(job_item);
 }
 } /* namespace directordaemon */

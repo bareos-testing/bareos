@@ -448,7 +448,7 @@ int main(int argc, char* argv[])
 
   Dmsg0(200, "wait for next job\n");
   /* Main loop -- call scheduler to get next job to run */
-  while ((jcr = wait_for_next_job(runjob))) {
+  while ((jcr = SchedulerWaitForNextJob(runjob))) {
     RunJob(jcr);  /* run job */
     FreeJcr(jcr); /* release jcr */
     SetJcrInThreadSpecificData(nullptr);
