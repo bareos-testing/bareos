@@ -24,10 +24,10 @@
 
 namespace directordaemon {
 
-JobControlRecord* SchedulerWaitForNextJob(char* one_shot_job_to_run);
+JobControlRecord* SchedulerWaitForNextJob();
 bool IsDoyInLastWeek(int year, int doy);
 void TermScheduler();
-void InvalidateSchedules();
+void ClearSchedulerQueue();
 
 } /* namespace directordaemon */
 #endif  // BAREOS_DIRD_SCHEDULER_H_

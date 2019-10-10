@@ -30,21 +30,38 @@ namespace directordaemon {
 class RunResource;
 class JobResource;
 
-struct JobItem {
-  RunResource* run{nullptr};
-  JobResource* job{nullptr};
-  time_t runtime{0};
-  int priority{10};
+struct SchedulerJobItem {
+  SchedulerJobItem() = default;
+  SchedulerJobItem(JobResource* job,
+                   RunResource* run,
+                   time_t runtime,
+                   int priority)
+      : run_(run), job_(job), runtime_(runtime), priority_(priority)
+  {
+    is_valid_ = run && job && runtime;
+  };
+  RunResource* run_{nullptr};
+  JobResource* job_{nullptr};
+  time_t runtime_{0};
+  int priority_{10};
+  bool is_valid_{false};
 };
 
-class PrioritiseJobItems {
+class SchedulerJobItemQueuePrivate;
+
+class SchedulerJobItemQueue {
  public:
-  bool operator()(const JobItem& a, const JobItem& b) const;
+  SchedulerJobItemQueue();
+  ~SchedulerJobItemQueue();
+
+  SchedulerJobItem TakeOutTopItem();
+  void EmplaceItem(JobResource* job, RunResource* run, time_t runtime);
+  bool Empty() const;
+  void Clear();
+
+ private:
+  std::unique_ptr<SchedulerJobItemQueuePrivate> impl_;
 };
-
-using PrioritisedJobItemsQueue =
-    std::priority_queue<JobItem, std::vector<JobItem>, PrioritiseJobItems>;
-
 
 }  // namespace directordaemon
 

@@ -158,6 +158,17 @@ static void ReloadJobEndCb(JobControlRecord* jcr, void* ctx)
   UnlockJobs();
 }
 
+static JobControlRecord* PrepareJobToRun(const char* job_name)
+{
+  JobResource* job =
+      static_cast<JobResource*>(my_config->GetResWithName(R_JOB, job_name));
+  if (!job) { Emsg1(M_ABORT, 0, _("Job %s not found\n"), job_name); }
+  Dmsg1(5, "Found job_name %s\n", job_name);
+  JobControlRecord* jcr = new_jcr(sizeof(JobControlRecord), DirdFreeJcr);
+  SetJcrDefaults(jcr, job);
+  return jcr;
+}
+
 /**
  * This allows the message handler to operate on the database by using a pointer
  * to this function. The pointer is needed because the other daemons do not have
@@ -447,14 +458,12 @@ int main(int argc, char* argv[])
   if (!StartSocketServer(me->DIRaddrs)) { TerminateDird(0); }
 
   Dmsg0(200, "wait for next job\n");
-  /* Main loop -- call scheduler to get next job to run */
-  while ((jcr = SchedulerWaitForNextJob(runjob))) {
-    RunJob(jcr);  /* run job */
-    FreeJcr(jcr); /* release jcr */
-    SetJcrInThreadSpecificData(nullptr);
-    if (runjob) { /* command line, run a single job? */
-      break;      /* yes, Terminate */
-    }
+
+  if (runjob) {
+    JobControlRecord* jcr = PrepareJobToRun(runjob);
+    if (jcr) { ExecuteJob(jcr); }
+  } else {
+    RunScheduler();
   }
 
 bail_out:
@@ -623,7 +632,7 @@ bool DoReloadConfig()
     int num_running_jobs = 0;
     resource_table_reference* new_table = NULL;
 
-    InvalidateSchedules();
+    ClearSchedulerQueue();
     foreach_jcr (jcr) {
       if (jcr->getJobType() != JT_SYSTEM) {
         if (!new_table) {

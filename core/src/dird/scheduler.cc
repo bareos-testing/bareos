@@ -41,120 +41,36 @@
 #include "dird/storage.h"
 #include "lib/parse_conf.h"
 
+#include <atomic>
+
 namespace directordaemon {
 
 const int debuglevel = 200;
+static constexpr int default_wait_interval{60};
 
-static PrioritisedJobItemsQueue prioritised_job_item_queue;
+static SchedulerJobItemQueue prioritised_job_item_queue;
 
-static int const next_check_secs = 60;
+static bool AddJobsForThisAndNextHourToQueue();
+static void AddJobToQueue(JobResource* job,
+                          RunResource* run,
+                          time_t now,
+                          time_t runtime);
 
-static void find_runs();
-static void add_job(JobResource* job,
-                    RunResource* run,
-                    time_t now,
-                    time_t runtime);
-
-/**
- * called by reload_config to tell us that the schedules
- * we may have based our next jobs to run queues have been
- * invalidated.  In fact the schedules may not have changed
- * but the run object that we have recorded the last_run time
- * on are new and no longer have a valid last_run time which
- * causes us to double run schedules that get put into the list
- * because run_nh = 1.
- */
-static bool schedules_invalidated = false;
-void InvalidateSchedules(void) { schedules_invalidated = true; }
-
-/**
- *
- *         Main Bareos Scheduler
- *
- */
-JobControlRecord* SchedulerWaitForNextJob(char* one_shot_job_to_run)
+void ClearSchedulerQueue(void)
 {
-  JobControlRecord* jcr;
-  JobResource* job;
-  RunResource* run;
-  time_t now, prev;
-  static bool first = true;
+  LockJobs();
+  prioritised_job_item_queue.Clear();
+  UnlockJobs();
+}
 
-  Dmsg0(debuglevel, "Enter SchedulerWaitForNextJob\n");
-  if (first) {
-    first = false;
-    /* Create scheduled jobs list */
-    if (one_shot_job_to_run) { /* one shot */
-      job = (JobResource*)my_config->GetResWithName(R_JOB, one_shot_job_to_run);
-      if (!job) {
-        Emsg1(M_ABORT, 0, _("Job %s not found\n"), one_shot_job_to_run);
-      }
-      Dmsg1(5, "Found one_shot_job_to_run %s\n", one_shot_job_to_run);
-      jcr = new_jcr(sizeof(JobControlRecord), DirdFreeJcr);
-      SetJcrDefaults(jcr, job);
-      return jcr;
-    }
-  }
+static bool JobIsDisabled(JobResource* job)
+{
+  return (!job->enabled || (job->schedule && !job->schedule->enabled) ||
+          (job->client && !job->client->enabled));
+}
 
-  /* Wait until we have something in the
-   * next hour or so.
-   */
-again:
-  while (prioritised_job_item_queue.empty()) {
-    find_runs();
-    if (!prioritised_job_item_queue.empty()) { break; }
-    Bmicrosleep(next_check_secs, 0); /* recheck once per minute */
-  }
-
-  JobItem next_job = prioritised_job_item_queue.top();
-  prioritised_job_item_queue.pop();
-
-  /* Now wait for the time to run the job */
-  for (;;) {
-    time_t twait;
-    /* discard scheduled queue and rebuild with new schedule objects. */
-    LockJobs();
-    if (schedules_invalidated) {
-      while (!prioritised_job_item_queue.empty()) {
-        prioritised_job_item_queue.pop();
-      }
-      schedules_invalidated = false;
-      UnlockJobs();
-      goto again;
-    }
-    UnlockJobs();
-    prev = now = time(NULL);
-    twait = next_job.runtime - now;
-    if (twait <= 0) { /* time to run it */
-      break;
-    }
-    /* Recheck at least once per minute */
-    Bmicrosleep((next_check_secs < twait) ? next_check_secs : twait, 0);
-    /* Attempt to handle clock shift (but not daylight savings time changes)
-     * we allow a skew of 10 seconds before invalidating everything.
-     */
-    now = time(NULL);
-    if (now < prev - 10 || now > (prev + next_check_secs + 10)) {
-      schedules_invalidated = true;
-    }
-  }
-
-  jcr = new_jcr(sizeof(JobControlRecord), DirdFreeJcr);
-  run = next_job.run; /* pick up needed values */
-  job = next_job.job;
-
-  if (job->enabled && (!job->client || job->client->enabled)) {}
-
-  if (!job->enabled || (job->schedule && !job->schedule->enabled) ||
-      (job->client && !job->client->enabled)) {
-    FreeJcr(jcr);
-    goto again; /* ignore this job */
-  }
-
-  run->last_run = now; /* mark as run now */
-
-  ASSERT(job);
-  SetJcrDefaults(jcr, job);
+static void SetJcrFromRunResource(JobControlRecord* jcr, RunResource* run)
+{
   if (run->level) { jcr->setJobLevel(run->level); /* override run level */ }
 
   if (run->pool) {
@@ -205,15 +121,50 @@ again:
   }
 
   if (run->MaxRunSchedTime_set) { jcr->MaxRunSchedTime = run->MaxRunSchedTime; }
+}
+
+JobControlRecord* SchedulerWaitForNextJob()
+{
+  Dmsg0(debuglevel, "Enter SchedulerWaitForNextJob\n");
+
+again:
+  while (prioritised_job_item_queue.Empty()) {
+    if (!AddJobsForThisAndNextHourToQueue()) {
+      Bmicrosleep(default_wait_interval, 0);
+    }
+  }
+
+  SchedulerJobItem next_job = prioritised_job_item_queue.TakeOutTopItem();
+  if (!next_job.is_valid_) { goto again; }
+
+  time_t now;
+
+  for (;;) {
+    now = time(NULL);
+    time_t wait = next_job.runtime_ - now;
+    if (wait <= 0) { break; }
+
+    wait = default_wait_interval < wait ? default_wait_interval : wait;
+    Bmicrosleep(wait, 0);
+  }
+
+  if (JobIsDisabled(next_job.job_)) { goto again; }
+
+  next_job.run_->last_run = now;
+
+  JobControlRecord* jcr = new_jcr(sizeof(JobControlRecord), DirdFreeJcr);
+  SetJcrDefaults(jcr, next_job.job_);
+
+  SetJcrFromRunResource(jcr, next_job.run_);
 
   Dmsg0(debuglevel, "Leave SchedulerWaitForNextJob()\n");
   return jcr;
 }
 
-/**
- * Shutdown the scheduler
- */
-void TermScheduler() {}
+void TermScheduler()
+{
+  // Ueb
+}
 
 /**
  * check if given day of year is in last week of the month in the current year
@@ -248,127 +199,101 @@ bool IsDoyInLastWeek(int year, int doy)
   return false;
 }
 
-/**
- * Find all jobs to be run this hour and the next hour.
- */
-static void find_runs()
+class BreakdownTime {
+ public:
+  int hour{0};
+  int mday{0};
+  int wday{0};
+  int month{0};
+  int wom{0};
+  int woy{0};
+  int yday{0};
+  time_t time{0};
+  bool is_last_week{false};
+
+  BreakdownTime(time_t time)
+  {
+    struct tm tm;
+    Blocaltime(&time, &tm);
+    hour = tm.tm_hour;
+    mday = tm.tm_mday - 1;
+    wday = tm.tm_wday;
+    month = tm.tm_mon;
+    wom = mday / 7;
+    woy = TmWoy(time); /* get week of year */
+    yday = tm.tm_yday; /* get day of year */
+    is_last_week = IsDoyInLastWeek(tm.tm_year + 1900, yday);
+  }
+};
+
+bool CalculateRun(const BreakdownTime& b, const RunResource* run)
 {
-  time_t now, next_hour, runtime;
-  RunResource* run;
-  JobResource* job;
-  ScheduleResource* sched;
+  return BitIsSet(b.hour, run->hour) && BitIsSet(b.mday, run->mday) &&
+         BitIsSet(b.wday, run->wday) && BitIsSet(b.month, run->month) &&
+         (BitIsSet(b.wom, run->wom) || (b.is_last_week && run->last_set)) &&
+         BitIsSet(b.woy, run->woy);
+}
+
+static time_t CalculateRuntime(time_t time, uint32_t minute)
+{
   struct tm tm;
-  bool is_last_week = false;    /* are we in the last week of a month? */
-  bool nh_is_last_week = false; /* are we in the last week of a month? */
-  int hour, mday, wday, month, wom, woy, yday;
-  /* Items corresponding to above at the next hour */
-  int nh_hour, nh_mday, nh_wday, nh_month, nh_wom, nh_woy, nh_yday;
+  Blocaltime(&time, &tm);
+  tm.tm_min = minute;
+  tm.tm_sec = 0;
+  return mktime(&tm);
+}
 
-  Dmsg0(debuglevel, "enter find_runs()\n");
+static bool AddJobsForThisAndNextHourToQueue()
+{
+  Dmsg0(debuglevel, "enter AddJobsForThisAndNextHourToQueue()\n");
 
-  /*
-   * Compute values for time now
-   */
-  now = time(NULL);
-  Blocaltime(&now, &tm);
-  hour = tm.tm_hour;
-  mday = tm.tm_mday - 1;
-  wday = tm.tm_wday;
-  month = tm.tm_mon;
-  wom = mday / 7;
-  woy = TmWoy(now);  /* get week of year */
-  yday = tm.tm_yday; /* get day of year */
+  BreakdownTime now(time(nullptr));
 
   Dmsg8(debuglevel, "now = %x: h=%d m=%d md=%d wd=%d wom=%d woy=%d yday=%d\n",
-        now, hour, month, mday, wday, wom, woy, yday);
+        now.time, now.hour, now.month, now.mday, now.wday, now.wom, now.woy,
+        now.yday);
 
-  is_last_week = IsDoyInLastWeek(tm.tm_year + 1900, yday);
-
-  /*
-   * Compute values for next hour from now.
-   * We do this to be sure we don't miss a job while
-   * sleeping.
-   */
-  next_hour = now + 3600;
-  Blocaltime(&next_hour, &tm);
-  nh_hour = tm.tm_hour;
-  nh_mday = tm.tm_mday - 1;
-  nh_wday = tm.tm_wday;
-  nh_month = tm.tm_mon;
-  nh_wom = nh_mday / 7;
-  nh_woy = TmWoy(next_hour); /* get week of year */
-  nh_yday = tm.tm_yday;      /* get day of year */
+  BreakdownTime next_hour(now.time + 3600);
 
   Dmsg8(debuglevel, "nh = %x: h=%d m=%d md=%d wd=%d wom=%d woy=%d yday=%d\n",
-        next_hour, nh_hour, nh_month, nh_mday, nh_wday, nh_wom, nh_woy,
-        nh_yday);
+        next_hour.time, next_hour.hour, next_hour.month, next_hour.mday,
+        next_hour.wday, next_hour.wom, next_hour.woy, next_hour.yday);
 
-  nh_is_last_week = IsDoyInLastWeek(tm.tm_year + 1900, nh_yday);
+  JobResource* job = nullptr;
+  bool job_added = false;
 
-  /*
-   * Loop through all jobs
-   */
   LockRes(my_config);
   foreach_res (job, R_JOB) {
-    sched = job->schedule;
-    if (sched == NULL || !sched->enabled || !job->enabled ||
-        (job->client && !job->client->enabled)) { /* scheduled? or enabled? */
-      continue;                                   /* no, skip this job */
-    }
+    if (JobIsDisabled(job)) { continue; }
 
     Dmsg1(debuglevel, "Got job: %s\n", job->resource_name_);
-    for (run = sched->run; run; run = run->next) {
-      bool run_now, run_nh;
-      /*
-       * Find runs scheduled between now and the next hour.
-       */
-      run_now = BitIsSet(hour, run->hour) && BitIsSet(mday, run->mday) &&
-                BitIsSet(wday, run->wday) && BitIsSet(month, run->month) &&
-                (BitIsSet(wom, run->wom) || (run->last_set && is_last_week)) &&
-                BitIsSet(woy, run->woy);
 
-      run_nh =
-          BitIsSet(nh_hour, run->hour) && BitIsSet(nh_mday, run->mday) &&
-          BitIsSet(nh_wday, run->wday) && BitIsSet(nh_month, run->month) &&
-          (BitIsSet(nh_wom, run->wom) || (run->last_set && nh_is_last_week)) &&
-          BitIsSet(nh_woy, run->woy);
+    for (RunResource* run = job->schedule->run; run; run = run->next) {
+      bool run_now = CalculateRun(now, run);
+      bool run_nh = CalculateRun(next_hour, run);
 
       Dmsg3(debuglevel, "run@%p: run_now=%d run_nh=%d\n", run, run_now, run_nh);
 
       if (run_now || run_nh) {
-        /*
-         * find time (time_t) job is to be run
-         */
-        Blocaltime(&now, &tm);   /* reset tm structure */
-        tm.tm_min = run->minute; /* set run minute */
-        tm.tm_sec = 0;           /* zero secs */
-        runtime = mktime(&tm);
-        if (run_now) { add_job(job, run, now, runtime); }
-        /* If job is to be run in the next hour schedule it */
-        if (run_nh) { add_job(job, run, now, runtime + 3600); }
+        time_t runtime = CalculateRuntime(now.time, run->minute);
+        if (run_now) { AddJobToQueue(job, run, now.time, runtime); }
+        if (run_nh) { AddJobToQueue(job, run, now.time, runtime + 3600); }
+        job_added = true;
       }
     }
   }
   UnlockRes(my_config);
-  Dmsg0(debuglevel, "Leave find_runs()\n");
+  Dmsg0(debuglevel, "Leave AddJobsForThisAndNextHourToQueue()\n");
+  return job_added;
 }
 
-static void add_job(JobResource* job,
-                    RunResource* run,
-                    time_t now,
-                    time_t runtime)
+static void AddJobToQueue(JobResource* job,
+                          RunResource* run,
+                          time_t now,
+                          time_t runtime)
 {
   if (((runtime - run->last_run) < 61) || ((runtime + 59) < now)) { return; }
 
-  JobItem job_item;
-  job_item.run = run;
-  job_item.job = job;
-  job_item.runtime = runtime;
-  if (run->Priority) {
-    job_item.priority = run->Priority;
-  } else {
-    job_item.priority = job->Priority;
-  }
-  prioritised_job_item_queue.push(job_item);
+  prioritised_job_item_queue.EmplaceItem(job, run, runtime);
 }
 } /* namespace directordaemon */

@@ -25,50 +25,63 @@
 
 using namespace directordaemon;
 
-static PrioritisedJobItemsQueue prioritised_job_item_queue;
+static SchedulerJobItemQueue scheduler_job_item_queue;
 
-TEST(scheduler_job_item_queue, asd)
+TEST(scheduler_job_item_queue, job_item)
+{
+  SchedulerJobItem item;
+  EXPECT_FALSE(item.is_valid_);
+
+  JobResource job;
+  RunResource run;
+
+  SchedulerJobItem item_initialised(&job, &run, time(nullptr), 0);
+  EXPECT_TRUE(item_initialised.is_valid_);
+}
+
+TEST(scheduler_job_item_queue, priority_and_time)
 {
   time_t now = time(nullptr);
 
   std::vector<JobResource> job_resources(4);
+  std::vector<RunResource> run_resources(job_resources.size());
 
   for (std::size_t i = 0; i < job_resources.size(); i++) {
-    JobItem job_item;
+    time_t runtime{0};
     switch (i) {
       case 0:
-        job_item.runtime = now;
-        job_item.priority = 10;
+        runtime = now;
+        run_resources[i].Priority = 10;
         job_resources[i].selection_type = 1;  // runs first
         break;
       case 1:
-        job_item.runtime = now + 1;
-        job_item.priority = 10;
+        runtime = now + 1;
+        run_resources[i].Priority = 10;
         job_resources[i].selection_type = 3;
         break;
       case 2:
-        job_item.runtime = now + 1;
-        job_item.priority = 11;
+        runtime = now + 1;
+        run_resources[i].Priority = 11;
         job_resources[i].selection_type = 4;  // runs last
         break;
       case 3:
-        job_item.runtime = now + 1;
-        job_item.priority = 9;
+        runtime = now + 1;
+        run_resources[i].Priority = 9;
         job_resources[i].selection_type = 2;
         break;
       default:
         assert(false);
     }
-    job_item.job = &job_resources[i];
-    prioritised_job_item_queue.push(job_item);
+    scheduler_job_item_queue.EmplaceItem(&job_resources[i], &run_resources[i],
+                                         runtime);
   }
 
   int item_position = 1;
-  while (!prioritised_job_item_queue.empty()) {
-    const JobItem& job_item = prioritised_job_item_queue.top();
-    ASSERT_EQ(job_item.job->selection_type, item_position)
+  while (!scheduler_job_item_queue.Empty()) {
+    SchedulerJobItem job_item = scheduler_job_item_queue.TakeOutTopItem();
+    ASSERT_TRUE(job_item.is_valid_);
+    ASSERT_EQ(job_item.job_->selection_type, item_position)
         << "selection_type is used as position parameter in this test";
-    prioritised_job_item_queue.pop();
     item_position++;
   }
 }
