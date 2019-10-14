@@ -21,6 +21,7 @@
 
 #include "gtest/gtest.h"
 #include "dird/scheduler_job_item_queue.h"
+#include "dird/broken_down_time.h"
 #include "dird/dird_conf.h"
 
 using namespace directordaemon;
@@ -84,4 +85,11 @@ TEST(scheduler_job_item_queue, priority_and_time)
         << "selection_type is used as position parameter in this test";
     item_position++;
   }
+}
+
+#include <bitset>
+
+TEST(scheduler_job_item_queue, breakdown_time)
+{
+  BrokenDownTime bt(time(nullptr));
 }

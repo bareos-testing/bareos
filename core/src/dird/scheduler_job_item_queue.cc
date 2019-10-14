@@ -55,11 +55,14 @@ SchedulerJobItemQueue::~SchedulerJobItemQueue() = default;
 SchedulerJobItem SchedulerJobItemQueue::TakeOutTopItem()
 {
   SchedulerJobItem job_item;
+
   std::lock_guard<std::mutex> lg(impl_->mutex);
+
   if (!impl_->priority_queue.empty()) {
     job_item = impl_->priority_queue.top();
   }
   impl_->priority_queue.pop();
+
   return job_item;
 }
 

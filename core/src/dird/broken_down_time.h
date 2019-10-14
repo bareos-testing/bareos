@@ -21,21 +21,26 @@
    02110-1301, USA.
 */
 
-#ifndef BAREOS_DIRD_SCHEDULER_H_
-#define BAREOS_DIRD_SCHEDULER_H_
-
-class JobControlRecord;
+#ifndef BAREOS_SRC_DIRD_BROKEN_DOWN_TIME_H_
+#define BAREOS_SRC_DIRD_BROKEN_DOWN_TIME_H_
 
 namespace directordaemon {
 
-class RunResource;
-class BrokenDownTime;
+class BrokenDownTime {
+ public:
+  BrokenDownTime(time_t time);
 
-JobControlRecord* SchedulerWaitForNextJob();
-bool IsDoyInLastWeek(int year, int doy);
-void TermScheduler();
-void ClearSchedulerQueue();
-bool CalculateRun(const BrokenDownTime& b, const RunResource* run);
+  int hour{0};
+  int mday{0};
+  int wday{0};
+  int month{0};
+  int wom{0};
+  int woy{0};
+  int yday{0};
+  time_t time{0};
+  bool is_last_week{false};
+};
 
-} /* namespace directordaemon */
-#endif  // BAREOS_DIRD_SCHEDULER_H_
+}  // namespace directordaemon
+
+#endif  // BAREOS_SRC_DIRD_BROKEN_DOWN_TIME_H_

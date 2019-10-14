@@ -22,7 +22,7 @@ set(DIRDSRCS dird.cc)
 
 #DIRD_OBJECTS_SRCS also used in a separate library for unittests
 set(DIRD_OBJECTS_SRCS admin.cc archive.cc authenticate.cc authenticate_console.cc
-   autoprune.cc backup.cc bsr.cc catreq.cc
+   autoprune.cc backup.cc broken_down_time.cc bsr.cc catreq.cc
    consolidate.cc dird_globals.cc dir_plugins.cc dird_conf.cc expand.cc fd_cmds.cc
    getmsg.cc inc_conf.cc job.cc jobq.cc migrate.cc msgchan.cc
    ndmp_dma_storage.cc
