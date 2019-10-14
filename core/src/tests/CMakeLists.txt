@@ -412,12 +412,34 @@ add_executable(scheduler_job_item_queue scheduler_job_item_queue.cc)
 target_link_libraries(scheduler_job_item_queue
    dird_objects
    bareos
-   bareosfind
-   bareoscats
-   bareossql
    ${GTEST_LIBRARIES}
    ${GTEST_MAIN_LIBRARIES}
 )
 
+IF(HAVE_PAM)
+   target_link_libraries(scheduler_job_item_queue ${PAM_LIBRARIES})
+ENDIF()
+
 gtest_discover_tests(scheduler_job_item_queue TEST_PREFIX gtest:)
+
+####### scheduler  #####################################
+add_executable(scheduler scheduler.cc)
+
+target_link_libraries(scheduler
+   dird_objects
+   bareos
+   bareosfind
+   bareoscats
+   bareossql
+   ${LMDB_LIBS}
+   ${NDMP_LIBS}
+   ${GTEST_LIBRARIES}
+   ${GTEST_MAIN_LIBRARIES}
+)
+
+IF(HAVE_PAM)
+   target_link_libraries(scheduler ${PAM_LIBRARIES})
+ENDIF()
+
+gtest_discover_tests(scheduler TEST_PREFIX gtest:)
 

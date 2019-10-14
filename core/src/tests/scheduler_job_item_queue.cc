@@ -20,6 +20,8 @@
 */
 
 #include "gtest/gtest.h"
+#include "dird/dird_globals.h"
+#include "dird/scheduler.h"
 #include "dird/scheduler_job_item_queue.h"
 #include "dird/broken_down_time.h"
 #include "dird/dird_conf.h"
@@ -47,42 +49,35 @@ TEST(scheduler_job_item_queue, priority_and_time)
   std::vector<JobResource> job_resources(4);
   std::vector<RunResource> run_resources(job_resources.size());
 
-  for (std::size_t i = 0; i < job_resources.size(); i++) {
-    time_t runtime{0};
-    switch (i) {
-      case 0:
-        runtime = now;
-        run_resources[i].Priority = 10;
-        job_resources[i].selection_type = 1;  // runs first
-        break;
-      case 1:
-        runtime = now + 1;
-        run_resources[i].Priority = 10;
-        job_resources[i].selection_type = 3;
-        break;
-      case 2:
-        runtime = now + 1;
-        run_resources[i].Priority = 11;
-        job_resources[i].selection_type = 4;  // runs last
-        break;
-      case 3:
-        runtime = now + 1;
-        run_resources[i].Priority = 9;
-        job_resources[i].selection_type = 2;
-        break;
-      default:
-        assert(false);
-    }
-    scheduler_job_item_queue.EmplaceItem(&job_resources[i], &run_resources[i],
-                                         runtime);
-  }
+  time_t runtime = now;
+  run_resources[0].Priority = 10;
+  job_resources[0].selection_type = 1;  // runs first
+  scheduler_job_item_queue.EmplaceItem(&job_resources[0], &run_resources[0],
+                                       runtime);
+  runtime = now + 1;
+  run_resources[1].Priority = 10;
+  job_resources[1].selection_type = 3;
+  scheduler_job_item_queue.EmplaceItem(&job_resources[1], &run_resources[1],
+                                       runtime);
+  runtime = now + 1;
+  run_resources[2].Priority = 11;
+  job_resources[2].selection_type = 4;  // runs last
+  scheduler_job_item_queue.EmplaceItem(&job_resources[2], &run_resources[2],
+                                       runtime);
+  runtime = now + 1;
+  run_resources[3].Priority = 9;
+  job_resources[3].selection_type = 2;
+  scheduler_job_item_queue.EmplaceItem(&job_resources[3], &run_resources[3],
+                                       runtime);
 
   int item_position = 1;
   while (!scheduler_job_item_queue.Empty()) {
     SchedulerJobItem job_item = scheduler_job_item_queue.TakeOutTopItem();
     ASSERT_TRUE(job_item.is_valid_);
     ASSERT_EQ(job_item.job_->selection_type, item_position)
-        << "selection_type is used as position parameter in this test";
+        << "selection_type is used as "
+           "position parameter in this "
+           "test";
     item_position++;
   }
 }
@@ -125,9 +120,4 @@ TEST(scheduler_job_item_queue, runtime_undefined)
     failed = true;
   }
   EXPECT_TRUE(failed);
-}
-
-TEST(scheduler_job_item_queue, brokendown_time)
-{
-  BrokenDownTime bt(time(nullptr));
 }

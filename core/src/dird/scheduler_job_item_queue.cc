@@ -62,8 +62,8 @@ SchedulerJobItem SchedulerJobItemQueue::TakeOutTopItem()
 
   if (!impl_->priority_queue.empty()) {
     job_item = impl_->priority_queue.top();
+    impl_->priority_queue.pop();
   }
-  impl_->priority_queue.pop();
 
   return job_item;
 }
@@ -72,7 +72,6 @@ void SchedulerJobItemQueue::EmplaceItem(JobResource* job,
                                         RunResource* run,
                                         time_t runtime)
 {
-  std::lock_guard<std::mutex> lg(impl_->mutex);
   if (!job) {
     throw std::invalid_argument("Invalid Argument: JobResource is undefined");
   }
@@ -82,6 +81,7 @@ void SchedulerJobItemQueue::EmplaceItem(JobResource* job,
   if (!runtime) {
     throw std::invalid_argument("Invalid Argument: runtime is invalid");
   }
+  std::lock_guard<std::mutex> lg(impl_->mutex);
   impl_->priority_queue.emplace(job, run, runtime,
                                 run->Priority ? run->Priority : job->Priority);
 }

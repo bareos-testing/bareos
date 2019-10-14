@@ -29,6 +29,7 @@ namespace directordaemon {
 
 class RunResource;
 class JobResource;
+class SchedulerJobItemQueuePrivate;
 
 struct SchedulerJobItem {
   SchedulerJobItem() = default;
@@ -36,18 +37,16 @@ struct SchedulerJobItem {
                    RunResource* run,
                    time_t runtime,
                    int priority)
-      : run_(run), job_(job), runtime_(runtime), priority_(priority)
+      : job_(job), run_(run), runtime_(runtime), priority_(priority)
   {
-    is_valid_ = run && job && runtime;
+    is_valid_ = job && run && runtime;
   };
-  RunResource* run_{nullptr};
   JobResource* job_{nullptr};
+  RunResource* run_{nullptr};
   time_t runtime_{0};
   int priority_{10};
   bool is_valid_{false};
 };
-
-class SchedulerJobItemQueuePrivate;
 
 class SchedulerJobItemQueue {
  public:
@@ -62,7 +61,6 @@ class SchedulerJobItemQueue {
  private:
   std::unique_ptr<SchedulerJobItemQueuePrivate> impl_;
 };
-
 
 }  // namespace directordaemon
 

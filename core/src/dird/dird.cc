@@ -505,7 +505,7 @@ static
     DeletePidFile(me->pid_directory, "bareos-dir",
                   GetFirstPortHostOrder(me->DIRaddrs));
   }
-  TermScheduler();
+  TerminateScheduler();
   TermJobServer();
 
   if (runjob) { free(runjob); }

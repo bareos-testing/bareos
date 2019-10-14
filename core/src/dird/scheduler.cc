@@ -40,17 +40,32 @@
 #include "dird/scheduler.h"
 #include "dird/scheduler_job_item_queue.h"
 #include "dird/storage.h"
+#include "include/make_unique.h"
 #include "lib/parse_conf.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 
 namespace directordaemon {
 
-const int debuglevel = 200;
-static constexpr int default_wait_interval{60};
+class SystemTimeSource : public TimeSource {
+ public:
+  time_t SystemTime() const override { return time(nullptr); }
+};
 
-static bool running{true};
+static SystemTimeSource time_source;
+static SchedulerSettings default_scheduler_settings(time_source, 60);
+static const SchedulerSettings* scheduler_settings{&default_scheduler_settings};
+
+void SetSchedulerDefaults(const SchedulerSettings* settings)
+{
+  scheduler_settings = settings;
+}
+
+const int debuglevel = 200;
+
+static std::atomic<bool> active{true};
 static std::condition_variable wait_condition;
 static std::mutex wait_mutex;
 
@@ -62,17 +77,15 @@ static void AddJobToQueue(JobResource* job,
                           time_t now,
                           time_t runtime);
 
-void ClearSchedulerQueue(void)
-{
-  LockJobs();
-  prioritised_job_item_queue.Clear();
-  UnlockJobs();
-}
+void ClearSchedulerQueue(void) { prioritised_job_item_queue.Clear(); }
 
 static bool JobIsDisabled(JobResource* job)
 {
-  return (!job->enabled || (job->schedule && !job->schedule->enabled) ||
-          (job->client && !job->client->enabled));
+  if (!job->schedule) { return true; }
+  if (!job->schedule->enabled) { return true; }
+  if (!job->enabled) { return true; }
+  if (job->client && !job->client->enabled) { return true; }
+  return false;
 }
 
 static void SetJcrFromRunResource(JobControlRecord* jcr, RunResource* run)
@@ -129,17 +142,10 @@ static void SetJcrFromRunResource(JobControlRecord* jcr, RunResource* run)
   if (run->MaxRunSchedTime_set) { jcr->MaxRunSchedTime = run->MaxRunSchedTime; }
 }
 
-static bool ShutdownOrTimeout(std::chrono::seconds wait_interval)
+static void WaitFor(std::chrono::seconds wait_interval)
 {
   std::unique_lock<std::mutex> ul(wait_mutex);
-  return wait_condition.wait_for(ul, wait_interval, []() { return running; });
-}
-
-void TermScheduler()
-{
-  std::lock_guard<std::mutex> lg(wait_mutex);
-  running = true;
-  wait_condition.notify_one();
+  wait_condition.wait_for(ul, wait_interval);
 }
 
 static JobControlRecord* TryCreateJobControlRecord(SchedulerJobItem& next_job)
@@ -147,7 +153,7 @@ static JobControlRecord* TryCreateJobControlRecord(SchedulerJobItem& next_job)
   if (JobIsDisabled(next_job.job_)) {
     return nullptr;
   } else {
-    next_job.run_->last_run = time(nullptr);
+    next_job.run_->last_run = scheduler_settings->time_source_.SystemTime();
     JobControlRecord* jcr = new_jcr(sizeof(JobControlRecord), DirdFreeJcr);
     SetJcrDefaults(jcr, next_job.job_);
     SetJcrFromRunResource(jcr, next_job.run_);
@@ -156,36 +162,49 @@ static JobControlRecord* TryCreateJobControlRecord(SchedulerJobItem& next_job)
   }
 }
 
-JobControlRecord* SchedulerWaitForNextJob()
+static void FillJobQueue()
 {
-  Dmsg0(debuglevel, "Enter SchedulerWaitForNextJob\n");
+  while (active && prioritised_job_item_queue.Empty()) {
+    if (!AddJobsForThisAndNextHourToQueue()) {
+      WaitFor(std::chrono::seconds(scheduler_settings->default_wait_interval_));
+    }
+  }
+}
 
-  while (running) {
-    if (prioritised_job_item_queue.Empty()) {
-      if (!AddJobsForThisAndNextHourToQueue()) {
-        if (ShutdownOrTimeout(std::chrono::seconds(default_wait_interval))) {
-          running = false;
-        }
-      }
+static void AwaitAndRunJobs()
+{
+  while (active && !prioritised_job_item_queue.Empty()) {
+    SchedulerJobItem next_job = prioritised_job_item_queue.TakeOutTopItem();
+    if (!next_job.is_valid_) { break; }
+    time_t now = time_t(time(NULL));
+    time_t wait = next_job.runtime_ - now;
+    if (wait <= 0) {
+      JobControlRecord* jcr = TryCreateJobControlRecord(next_job);
+      if (jcr) { ExecuteJob(jcr); }
     } else {
-      // pick items out of queue and wait for start time
-      SchedulerJobItem next_job = prioritised_job_item_queue.TakeOutTopItem();
-      if (next_job.is_valid_) {
-        while (running) {
-          time_t now = time(NULL);
-          time_t wait = next_job.runtime_ - now;
-          if (wait <= 0) {
-            JobControlRecord* jcr = TryCreateJobControlRecord(next_job);
-            if (jcr) { return jcr; }
-          }
-          std::chrono::seconds wait_interval{
-              default_wait_interval < wait ? default_wait_interval : wait};
-          if (ShutdownOrTimeout(wait_interval)) { running = false; }
-        }  // while (running)
-      }    // if (next_job.is_valid_)
-    }      // if (prioritised_job_item_queue.Empty())
-  }        // while (running)
-  return nullptr;
+      time_t wait_interval{scheduler_settings->default_wait_interval_ < wait
+                               ? scheduler_settings->default_wait_interval_
+                               : wait};
+      WaitFor(std::chrono::seconds(wait_interval));
+    }
+  }  // while (active && next_job.is_valid_)
+}
+
+void RunScheduler()
+{
+  active = true;
+  while (active) {
+    Dmsg0(debuglevel, "Enter SchedulerWaitForNextJob\n");
+    FillJobQueue();
+    AwaitAndRunJobs();
+  }
+  prioritised_job_item_queue.Clear();
+}
+
+void TerminateScheduler()
+{
+  active = false;
+  wait_condition.notify_one();
 }
 
 bool CalculateRun(const BrokenDownTime& b, const RunResource* run)
