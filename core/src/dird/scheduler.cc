@@ -50,7 +50,7 @@ namespace directordaemon {
 const int debuglevel = 200;
 static constexpr int default_wait_interval{60};
 
-static bool shutdown{false};
+static bool running{true};
 static std::condition_variable wait_condition;
 static std::mutex wait_mutex;
 
@@ -129,56 +129,63 @@ static void SetJcrFromRunResource(JobControlRecord* jcr, RunResource* run)
   if (run->MaxRunSchedTime_set) { jcr->MaxRunSchedTime = run->MaxRunSchedTime; }
 }
 
-static bool WaitFor(std::chrono::seconds wait_interval)
+static bool ShutdownOrTimeout(std::chrono::seconds wait_interval)
 {
   std::unique_lock<std::mutex> ul(wait_mutex);
-  return wait_condition.wait_for(ul, wait_interval, []() { return shutdown; });
+  return wait_condition.wait_for(ul, wait_interval, []() { return running; });
+}
+
+void TermScheduler()
+{
+  std::lock_guard<std::mutex> lg(wait_mutex);
+  running = true;
+  wait_condition.notify_one();
+}
+
+static JobControlRecord* TryCreateJobControlRecord(SchedulerJobItem& next_job)
+{
+  if (JobIsDisabled(next_job.job_)) {
+    return nullptr;
+  } else {
+    next_job.run_->last_run = time(nullptr);
+    JobControlRecord* jcr = new_jcr(sizeof(JobControlRecord), DirdFreeJcr);
+    SetJcrDefaults(jcr, next_job.job_);
+    SetJcrFromRunResource(jcr, next_job.run_);
+    Dmsg0(debuglevel, "Leave SchedulerWaitForNextJob()\n");
+    return jcr;
+  }
 }
 
 JobControlRecord* SchedulerWaitForNextJob()
 {
   Dmsg0(debuglevel, "Enter SchedulerWaitForNextJob\n");
 
-  bool shutdown{false};
-
-  while (!shutdown) {
+  while (running) {
     if (prioritised_job_item_queue.Empty()) {
       if (!AddJobsForThisAndNextHourToQueue()) {
-        shutdown = WaitFor(std::chrono::seconds(default_wait_interval));
+        if (ShutdownOrTimeout(std::chrono::seconds(default_wait_interval))) {
+          running = false;
+        }
       }
     } else {
       // pick items out of queue and wait for start time
       SchedulerJobItem next_job = prioritised_job_item_queue.TakeOutTopItem();
       if (next_job.is_valid_) {
-        for (; shutdown;) {
+        while (running) {
           time_t now = time(NULL);
           time_t wait = next_job.runtime_ - now;
           if (wait <= 0) {
-            if (!JobIsDisabled(next_job.job_)) {
-              next_job.run_->last_run = now;
-              JobControlRecord* jcr =
-                  new_jcr(sizeof(JobControlRecord), DirdFreeJcr);
-              SetJcrDefaults(jcr, next_job.job_);
-              SetJcrFromRunResource(jcr, next_job.run_);
-              Dmsg0(debuglevel, "Leave SchedulerWaitForNextJob()\n");
-              return jcr;
-            }
+            JobControlRecord* jcr = TryCreateJobControlRecord(next_job);
+            if (jcr) { return jcr; }
           }
           std::chrono::seconds wait_interval{
               default_wait_interval < wait ? default_wait_interval : wait};
-          shutdown = WaitFor(wait_interval);
-        }
-      }
-    }
-  }
+          if (ShutdownOrTimeout(wait_interval)) { running = false; }
+        }  // while (running)
+      }    // if (next_job.is_valid_)
+    }      // if (prioritised_job_item_queue.Empty())
+  }        // while (running)
   return nullptr;
-}
-
-void TermScheduler()
-{
-  std::lock_guard<std::mutex> lg(wait_mutex);
-  shutdown = true;
-  wait_condition.notify_one();
 }
 
 bool CalculateRun(const BrokenDownTime& b, const RunResource* run)
@@ -249,6 +256,11 @@ static void AddJobToQueue(JobResource* job,
 {
   if (((runtime - run->last_run) < 61) || ((runtime + 59) < now)) { return; }
 
-  prioritised_job_item_queue.EmplaceItem(job, run, runtime);
+  try {
+    prioritised_job_item_queue.EmplaceItem(job, run, runtime);
+  } catch (const std::invalid_argument& e) {
+    Dmsg1(debuglevel, "Could not emplace job: %s\n", e.what());
+  }
 }
+
 } /* namespace directordaemon */

@@ -63,6 +63,7 @@ class SchedulerJobItemQueue {
   std::unique_ptr<SchedulerJobItemQueuePrivate> impl_;
 };
 
+
 }  // namespace directordaemon
 
 #endif  // BAREOS_SRC_DIRD_SCHEDULER_JOB_ITEM_QUEUE_H_

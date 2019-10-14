@@ -24,6 +24,8 @@
 #include "scheduler_job_item_queue.h"
 #include "dird/dird_conf.h"
 
+#include <stdexcept>
+
 namespace directordaemon {
 
 struct PrioritiseJobItems {
@@ -71,6 +73,15 @@ void SchedulerJobItemQueue::EmplaceItem(JobResource* job,
                                         time_t runtime)
 {
   std::lock_guard<std::mutex> lg(impl_->mutex);
+  if (!job) {
+    throw std::invalid_argument("Invalid Argument: JobResource is undefined");
+  }
+  if (!run) {
+    throw std::invalid_argument("Invalid Argument: RunResource is undefined");
+  }
+  if (!runtime) {
+    throw std::invalid_argument("Invalid Argument: runtime is invalid");
+  }
   impl_->priority_queue.emplace(job, run, runtime,
                                 run->Priority ? run->Priority : job->Priority);
 }

@@ -36,8 +36,8 @@ TEST(scheduler_job_item_queue, job_item)
   JobResource job;
   RunResource run;
 
-  SchedulerJobItem item_initialised(&job, &run, time(nullptr), 0);
-  EXPECT_TRUE(item_initialised.is_valid_);
+  SchedulerJobItem item_unitialised(&job, &run, time(nullptr), 0);
+  EXPECT_TRUE(item_unitialised.is_valid_);
 }
 
 TEST(scheduler_job_item_queue, priority_and_time)
@@ -87,9 +87,47 @@ TEST(scheduler_job_item_queue, priority_and_time)
   }
 }
 
-#include <bitset>
+TEST(scheduler_job_item_queue, job_resource_undefined)
+{
+  bool failed{false};
+  RunResource run;
+  try {
+    scheduler_job_item_queue.EmplaceItem(nullptr, &run, 123);
+  } catch (const std::invalid_argument& e) {
+    EXPECT_STREQ(e.what(), "Invalid Argument: JobResource is undefined");
+    failed = true;
+  }
+  EXPECT_TRUE(failed);
+}
 
-TEST(scheduler_job_item_queue, breakdown_time)
+TEST(scheduler_job_item_queue, run_resource_undefined)
+{
+  bool failed{false};
+  JobResource job;
+  try {
+    scheduler_job_item_queue.EmplaceItem(&job, nullptr, 123);
+  } catch (const std::invalid_argument& e) {
+    EXPECT_STREQ(e.what(), "Invalid Argument: RunResource is undefined");
+    failed = true;
+  }
+  EXPECT_TRUE(failed);
+}
+
+TEST(scheduler_job_item_queue, runtime_undefined)
+{
+  bool failed{false};
+  JobResource job;
+  RunResource run;
+  try {
+    scheduler_job_item_queue.EmplaceItem(&job, &run, 0);
+  } catch (const std::invalid_argument& e) {
+    EXPECT_STREQ(e.what(), "Invalid Argument: runtime is invalid");
+    failed = true;
+  }
+  EXPECT_TRUE(failed);
+}
+
+TEST(scheduler_job_item_queue, brokendown_time)
 {
   BrokenDownTime bt(time(nullptr));
 }
