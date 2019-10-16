@@ -26,9 +26,13 @@
 
 namespace directordaemon {
 
+class DateTimeBitfield;
+
 class BrokenDownTime {
  public:
   BrokenDownTime(time_t time);
+  void PrintDebugMessage(int debuglevel) const;
+  bool CalculateRun(const DateTimeBitfield& date_time_bitfield);
 
   int hour{0};
   int mday{0};

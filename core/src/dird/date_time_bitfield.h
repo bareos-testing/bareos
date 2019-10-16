@@ -21,39 +21,23 @@
    02110-1301, USA.
 */
 
-#ifndef BAREOS_DIRD_SCHEDULER_H_
-#define BAREOS_DIRD_SCHEDULER_H_
+#ifndef BAREOS_SRC_DIRD_DATE_TIME_BITFILED_H_
+#define BAREOS_SRC_DIRD_DATE_TIME_BITFILED_H_
 
-#include <chrono>
-
-class JobControlRecord;
+#include "lib/bits.h"
 
 namespace directordaemon {
 
-class RunResource;
-class BrokenDownTime;
-
-class TimeSource {
- public:
-  virtual time_t SystemTime() = 0;
+struct DateTimeBitfield {
+  char hour[NbytesForBits(24 + 1)]{0};
+  char mday[NbytesForBits(31 + 1)]{0};
+  char month[NbytesForBits(12 + 1)]{0};
+  char wday[NbytesForBits(7 + 1)]{0};
+  char wom[NbytesForBits(5 + 1)]{0};
+  char woy[NbytesForBits(54 + 1)]{0};
+  bool last_week_of_month{false};
 };
 
-struct SchedulerSettings {
-  SchedulerSettings(TimeSource& time_source, time_t default_wait_interval)
-      : time_source_(time_source), default_wait_interval_(default_wait_interval)
-  {
-  }
+}  // namespace directordaemon
 
-  TimeSource& time_source_;
-  time_t default_wait_interval_{0};
-};
-
-void RunScheduler();
-bool IsDoyInLastWeek(int year, int doy);
-void TerminateScheduler();
-void ClearSchedulerQueue();
-bool CalculateRun(const BrokenDownTime& b, const RunResource* run);
-void SetSchedulerDefaults(const SchedulerSettings* settings);
-
-} /* namespace directordaemon */
-#endif  // BAREOS_DIRD_SCHEDULER_H_
+#endif  // BAREOS_SRC_DIRD_DATE_TIME_BITFILED_H_

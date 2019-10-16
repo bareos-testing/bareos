@@ -387,7 +387,7 @@ static bool show_scheduled_preview(UaContext* ua,
     bool run_now;
     int cnt = 0;
 
-    run_now = CalculateRun(bt, run);
+    run_now = bt.CalculateRun(run->date_time_bitfield);
 
     if (run_now) {
       /*

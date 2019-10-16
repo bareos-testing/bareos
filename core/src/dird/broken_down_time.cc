@@ -23,6 +23,7 @@
 
 #include "include/bareos.h"
 #include "dird/broken_down_time.h"
+#include "dird/date_time_bitfield.h"
 
 namespace directordaemon {
 
@@ -67,5 +68,21 @@ BrokenDownTime::BrokenDownTime(time_t time)
   yday = tm.tm_yday; /* get day of year */
   is_last_week = IsDoyInLastWeek(tm.tm_year + 1900, yday);
 }
+
+void BrokenDownTime::PrintDebugMessage(int debuglevel) const
+{
+  Dmsg8(debuglevel, "now = %x: h=%d m=%d md=%d wd=%d wom=%d woy=%d yday=%d\n",
+        time, hour, month, mday, wday, wom, woy, yday);
+}
+
+bool BrokenDownTime::CalculateRun(const DateTimeBitfield& bits)
+{
+  return BitIsSet(hour, bits.hour) && BitIsSet(mday, bits.mday) &&
+         BitIsSet(wday, bits.wday) && BitIsSet(month, bits.month) &&
+         (BitIsSet(wom, bits.wom) ||
+          (is_last_week && bits.last_week_of_month)) &&
+         BitIsSet(woy, bits.woy);
+}
+
 
 }  // namespace directordaemon

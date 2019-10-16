@@ -31,6 +31,7 @@
 #define BAREOS_DIRD_DIRD_CONF_H_
 
 #include "dird/client_connection_handshake_mode.h"
+#include "dird/date_time_bitfield.h"
 #include "lib/alist.h"
 #include "lib/messages_resource.h"
 #include "lib/resource_item.h"
@@ -705,16 +706,10 @@ class RunResource : public BareosResource {
   MessagesResource* msgs = nullptr;   /**< Messages override */
   char* since = nullptr;
   uint32_t level_no = 0;
-  uint32_t minute = 0;                     /* minute to run job */
-  time_t last_run = {0};                   /* last time run */
-  time_t next_run = {0};                   /* next time to run */
-  char hour[NbytesForBits(24 + 1)] = {0};  /* bit set for each hour */
-  char mday[NbytesForBits(31 + 1)] = {0};  /* bit set for each day of month */
-  char month[NbytesForBits(12 + 1)] = {0}; /* bit set for each month */
-  char wday[NbytesForBits(7 + 1)] = {0}; /* bit set for each day of the week */
-  char wom[NbytesForBits(5 + 1)] = {0};  /* week of month */
-  char woy[NbytesForBits(54 + 1)] = {0}; /* week of year */
-  bool last_set = false;                 /* last week of month */
+  uint32_t minute = 0;   /* minute to run job */
+  time_t last_run = {0}; /* last time run */
+  time_t next_run = {0}; /* next time to run */
+  DateTimeBitfield date_time_bitfield;
 };
 
 ConfigurationParser* InitDirConfig(const char* configfile, int exit_code);

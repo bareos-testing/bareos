@@ -1384,15 +1384,17 @@ RunResource* find_next_run(RunResource* run,
       wom = mday / 7;
       woy = TmWoy(future);
 
-      is_scheduled = BitIsSet(mday, run->mday) && BitIsSet(wday, run->wday) &&
-                     BitIsSet(month, run->month) && BitIsSet(wom, run->wom) &&
-                     BitIsSet(woy, run->woy);
+      is_scheduled = BitIsSet(mday, run->date_time_bitfield.mday) &&
+                     BitIsSet(wday, run->date_time_bitfield.wday) &&
+                     BitIsSet(month, run->date_time_bitfield.month) &&
+                     BitIsSet(wom, run->date_time_bitfield.wom) &&
+                     BitIsSet(woy, run->date_time_bitfield.woy);
 
       if (is_scheduled) { /* Jobs scheduled on that day */
         /* find time (time_t) job is to be run */
         Blocaltime(&future, &runtm);
         for (i = 0; i < 24; i++) {
-          if (BitIsSet(i, run->hour)) {
+          if (BitIsSet(i, run->date_time_bitfield.hour)) {
             runtm.tm_hour = i;
             runtm.tm_min = run->minute;
             runtm.tm_sec = 0;

@@ -51,7 +51,7 @@ namespace directordaemon {
 
 class SystemTimeSource : public TimeSource {
  public:
-  time_t SystemTime() const override { return time(nullptr); }
+  time_t SystemTime() override { return time(nullptr); }
 };
 
 static SystemTimeSource time_source;
@@ -176,7 +176,7 @@ static void AwaitAndRunJobs()
   while (active && !prioritised_job_item_queue.Empty()) {
     SchedulerJobItem next_job = prioritised_job_item_queue.TakeOutTopItem();
     if (!next_job.is_valid_) { break; }
-    time_t now = time_t(time(NULL));
+    time_t now = scheduler_settings->time_source_.SystemTime();
     time_t wait = next_job.runtime_ - now;
     if (wait <= 0) {
       JobControlRecord* jcr = TryCreateJobControlRecord(next_job);
@@ -207,14 +207,6 @@ void TerminateScheduler()
   wait_condition.notify_one();
 }
 
-bool CalculateRun(const BrokenDownTime& b, const RunResource* run)
-{
-  return BitIsSet(b.hour, run->hour) && BitIsSet(b.mday, run->mday) &&
-         BitIsSet(b.wday, run->wday) && BitIsSet(b.month, run->month) &&
-         (BitIsSet(b.wom, run->wom) || (b.is_last_week && run->last_set)) &&
-         BitIsSet(b.woy, run->woy);
-}
-
 static time_t CalculateRuntime(time_t time, uint32_t minute)
 {
   struct tm tm;
@@ -228,17 +220,11 @@ static bool AddJobsForThisAndNextHourToQueue()
 {
   Dmsg0(debuglevel, "enter AddJobsForThisAndNextHourToQueue()\n");
 
-  BrokenDownTime now(time(nullptr));
-
-  Dmsg8(debuglevel, "now = %x: h=%d m=%d md=%d wd=%d wom=%d woy=%d yday=%d\n",
-        now.time, now.hour, now.month, now.mday, now.wday, now.wom, now.woy,
-        now.yday);
+  BrokenDownTime now(scheduler_settings->time_source_.SystemTime());
+  now.PrintDebugMessage(debuglevel);
 
   BrokenDownTime next_hour(now.time + 3600);
-
-  Dmsg8(debuglevel, "nh = %x: h=%d m=%d md=%d wd=%d wom=%d woy=%d yday=%d\n",
-        next_hour.time, next_hour.hour, next_hour.month, next_hour.mday,
-        next_hour.wday, next_hour.wom, next_hour.woy, next_hour.yday);
+  next_hour.PrintDebugMessage(debuglevel);
 
   JobResource* job = nullptr;
   bool job_added = false;
@@ -250,8 +236,8 @@ static bool AddJobsForThisAndNextHourToQueue()
     Dmsg1(debuglevel, "Got job: %s\n", job->resource_name_);
 
     for (RunResource* run = job->schedule->run; run; run = run->next) {
-      bool run_now = CalculateRun(now, run);
-      bool run_nh = CalculateRun(next_hour, run);
+      bool run_now = now.CalculateRun(run->date_time_bitfield);
+      bool run_nh = next_hour.CalculateRun(run->date_time_bitfield);
 
       Dmsg3(debuglevel, "run@%p: run_now=%d run_nh=%d\n", run, run_now, run_nh);
 
