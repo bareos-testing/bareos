@@ -41,7 +41,7 @@ class BrokenDownTime {
   int wom{0};
   int woy{0};
   int yday{0};
-  time_t time{0};
+  time_t time_{0};
   bool is_last_week{false};
 };
 

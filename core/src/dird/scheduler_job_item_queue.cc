@@ -25,6 +25,7 @@
 #include "dird/dird_conf.h"
 
 #include <stdexcept>
+#include <iostream>
 
 namespace directordaemon {
 
@@ -40,7 +41,7 @@ struct PrioritiseJobItems {
 };
 
 struct SchedulerJobItemQueuePrivate {
-  std::mutex mutex;
+  mutable std::mutex mutex;
   std::priority_queue<SchedulerJobItem,
                       std::vector<SchedulerJobItem>,
                       PrioritiseJobItems>

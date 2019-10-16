@@ -1,9 +1,7 @@
 /*
    BAREOS® - Backup Archiving REcovery Open Sourced
 
-   Copyright (C) 2000-2011 Free Software Foundation Europe e.V.
-   Copyright (C) 2011-2012 Planets Communications B.V.
-   Copyright (C) 2013-2019 Bareos GmbH & Co. KG
+   Copyright (C) 2019-2019 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -21,27 +19,37 @@
    02110-1301, USA.
 */
 
-#ifndef BAREOS_SRC_DIRD_DATE_TIME_BITFILED_H_
-#define BAREOS_SRC_DIRD_DATE_TIME_BITFILED_H_
+#ifndef BAREOS_SRC_DIRD_SCHEDULER_SYSTEM_TIME_SOURCE_H_
+#define BAREOS_SRC_DIRD_SCHEDULER_SYSTEM_TIME_SOURCE_H_
 
-#include "lib/bits.h"
+#include "dird/scheduler_time_adapter.h"
+
+#include <chrono>
+#include <atomic>
+#include <thread>
 
 namespace directordaemon {
 
-struct DateTimeBitfield {
-  DateTimeBitfield()
+class SystemTimeSource : public TimeSource {
+ public:
+  time_t SystemTime() override { return time(nullptr); }
+
+  void WaitFor(std::chrono::seconds wait_interval) override
   {
-    //
+    std::chrono::milliseconds wait_increment = std::chrono::milliseconds(100);
+    std::size_t loop_count = wait_interval / wait_increment;
+
+    while (running_ && loop_count--) {
+      std::this_thread::sleep_for(wait_increment);
+    }
   }
-  char hour[NbytesForBits(24 + 1)]{0};
-  char mday[NbytesForBits(31 + 1)]{0};
-  char month[NbytesForBits(12 + 1)]{0};
-  char wday[NbytesForBits(7 + 1)]{0};
-  char wom[NbytesForBits(5 + 1)]{0};
-  char woy[NbytesForBits(54 + 1)]{0};
-  bool last_week_of_month{false};
+
+  void Terminate() override { running_ = false; }
+
+ private:
+  std::atomic<bool> running_{true};
 };
 
 }  // namespace directordaemon
 
-#endif  // BAREOS_SRC_DIRD_DATE_TIME_BITFILED_H_
+#endif  // BAREOS_SRC_DIRD_SCHEDULER_SYSTEM_TIME_SOURCE_H_

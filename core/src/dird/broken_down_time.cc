@@ -25,9 +25,12 @@
 #include "dird/broken_down_time.h"
 #include "dird/date_time_bitfield.h"
 
+#include <iostream>
+#include <ios>
+
 namespace directordaemon {
 
-static bool IsDoyInLastWeek(int year, int doy)
+static bool IsDayOfYearInLastWeek(int year, int doy)
 {
   int i;
   int* last_dom;
@@ -55,18 +58,18 @@ static bool IsDoyInLastWeek(int year, int doy)
   return false;
 }
 
-BrokenDownTime::BrokenDownTime(time_t time)
+BrokenDownTime::BrokenDownTime(time_t time) : time_(time)
 {
   struct tm tm;
-  Blocaltime(&time, &tm);
+  localtime_r(&time_, &tm);
   hour = tm.tm_hour;
   mday = tm.tm_mday - 1;
   wday = tm.tm_wday;
   month = tm.tm_mon;
   wom = mday / 7;
-  woy = TmWoy(time); /* get week of year */
-  yday = tm.tm_yday; /* get day of year */
-  is_last_week = IsDoyInLastWeek(tm.tm_year + 1900, yday);
+  woy = TmWoy(time_); /* get week of year */
+  yday = tm.tm_yday;  /* get day of year */
+  is_last_week = IsDayOfYearInLastWeek(tm.tm_year + 1900, yday);
 }
 
 void BrokenDownTime::PrintDebugMessage(int debuglevel) const
@@ -74,6 +77,7 @@ void BrokenDownTime::PrintDebugMessage(int debuglevel) const
   Dmsg8(debuglevel, "now = %x: h=%d m=%d md=%d wd=%d wom=%d woy=%d yday=%d\n",
         time, hour, month, mday, wday, wom, woy, yday);
 }
+
 
 bool BrokenDownTime::CalculateRun(const DateTimeBitfield& bits)
 {

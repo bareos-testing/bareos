@@ -24,36 +24,12 @@
 #ifndef BAREOS_DIRD_SCHEDULER_H_
 #define BAREOS_DIRD_SCHEDULER_H_
 
-#include <chrono>
-
-class JobControlRecord;
-
 namespace directordaemon {
 
-class RunResource;
-class BrokenDownTime;
-
-class TimeSource {
- public:
-  virtual time_t SystemTime() = 0;
-};
-
-struct SchedulerSettings {
-  SchedulerSettings(TimeSource& time_source, time_t default_wait_interval)
-      : time_source_(time_source), default_wait_interval_(default_wait_interval)
-  {
-  }
-
-  TimeSource& time_source_;
-  time_t default_wait_interval_{0};
-};
-
 void RunScheduler();
-bool IsDoyInLastWeek(int year, int doy);
 void TerminateScheduler();
 void ClearSchedulerQueue();
-bool CalculateRun(const BrokenDownTime& b, const RunResource* run);
-void SetSchedulerDefaults(const SchedulerSettings* settings);
 
 } /* namespace directordaemon */
+
 #endif  // BAREOS_DIRD_SCHEDULER_H_

@@ -39,45 +39,48 @@
 #include "dird/job.h"
 #include "dird/scheduler.h"
 #include "dird/scheduler_job_item_queue.h"
+#include "dird/scheduler_system_time_source.h"
+#include "dird/scheduler_time_adapter.h"
 #include "dird/storage.h"
 #include "include/make_unique.h"
 #include "lib/parse_conf.h"
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 
 namespace directordaemon {
 
-class SystemTimeSource : public TimeSource {
+class DefaultSchedulerTimeAdapter : public SchedulerTimeAdapter {
  public:
-  time_t SystemTime() override { return time(nullptr); }
+  DefaultSchedulerTimeAdapter()
+      : SchedulerTimeAdapter(std::make_unique<SystemTimeSource>())
+  {
+  }
 };
 
-static SystemTimeSource time_source;
-static SchedulerSettings default_scheduler_settings(time_source, 60);
-static const SchedulerSettings* scheduler_settings{&default_scheduler_settings};
+static std::unique_ptr<SchedulerTimeAdapter> time_adapter{
+    std::make_unique<DefaultSchedulerTimeAdapter>()};
 
-void SetSchedulerDefaults(const SchedulerSettings* settings)
+static std::function<void(JobControlRecord*)> ExecuteJobCallback{ExecuteJob};
+
+void OverrideSchedulerDefaults(
+    std::unique_ptr<SchedulerTimeAdapter> ta,
+    std::function<void(JobControlRecord*)> ExecuteJob)
 {
-  scheduler_settings = settings;
+  time_adapter = std::forward<std::unique_ptr<SchedulerTimeAdapter>>(ta);
+  ExecuteJobCallback = ExecuteJob;
 }
 
 const int debuglevel = 200;
-
 static std::atomic<bool> active{true};
-static std::condition_variable wait_condition;
-static std::mutex wait_mutex;
-
 static SchedulerJobItemQueue prioritised_job_item_queue;
 
-static bool AddJobsForThisAndNextHourToQueue();
+static void AddJobsForThisAndNextHourToQueue();
 static void AddJobToQueue(JobResource* job,
                           RunResource* run,
                           time_t now,
                           time_t runtime);
-
-void ClearSchedulerQueue(void) { prioritised_job_item_queue.Clear(); }
+static void SetJcrFromRunResource(JobControlRecord* jcr, RunResource* run);
 
 static bool JobIsDisabled(JobResource* job)
 {
@@ -86,6 +89,142 @@ static bool JobIsDisabled(JobResource* job)
   if (!job->enabled) { return true; }
   if (job->client && !job->client->enabled) { return true; }
   return false;
+}
+
+static JobControlRecord* TryCreateJobControlRecord(SchedulerJobItem& next_job)
+{
+  if (JobIsDisabled(next_job.job_)) {
+    return nullptr;
+  } else {
+    next_job.run_->last_run = time_adapter->time_source_->SystemTime();
+    JobControlRecord* jcr = new_jcr(sizeof(JobControlRecord), DirdFreeJcr);
+    SetJcrDefaults(jcr, next_job.job_);
+    SetJcrFromRunResource(jcr, next_job.run_);
+    Dmsg0(debuglevel, "Leave SchedulerWaitForNextJob()\n");
+    return jcr;
+  }
+}
+
+static void WaitForJobsToRun()
+{
+  SchedulerJobItem next_job;
+
+  while (active && !prioritised_job_item_queue.Empty()) {
+    next_job = prioritised_job_item_queue.TakeOutTopItem();
+    if (!next_job.is_valid_) { break; }
+    bool job_started = false;
+    while (!job_started) {
+      time_t now = time_adapter->time_source_->SystemTime();
+      time_t wait = next_job.runtime_ - now;
+      if (wait <= 0) {
+        JobControlRecord* jcr = TryCreateJobControlRecord(next_job);
+        if (jcr) { ExecuteJobCallback(jcr); }
+        job_started = true;
+      } else {
+        time_t wait_interval{time_adapter->default_wait_interval_ < wait
+                                 ? time_adapter->default_wait_interval_
+                                 : wait};
+        time_adapter->time_source_->WaitFor(
+            std::chrono::seconds(wait_interval));
+      }
+    }
+  }  // while (active && next_job.is_valid_)
+}
+
+static void FillSchedulerJobQueue()
+{
+  while (active && prioritised_job_item_queue.Empty()) {
+    AddJobsForThisAndNextHourToQueue();
+    if (prioritised_job_item_queue.Empty()) {
+      time_adapter->time_source_->WaitFor(
+          std::chrono::seconds(time_adapter->default_wait_interval_));
+    }
+  }
+}
+
+void RunScheduler()
+{
+  active = true;
+  while (active) {
+    Dmsg0(debuglevel, "Enter SchedulerWaitForNextJob\n");
+    FillSchedulerJobQueue();
+    WaitForJobsToRun();
+  }
+  prioritised_job_item_queue.Clear();
+}
+
+void TerminateScheduler()
+{
+  active = false;
+  time_adapter->time_source_->Terminate();
+}
+
+void ClearSchedulerQueue(void)
+{
+  // Clear() is thread safe
+  prioritised_job_item_queue.Clear();
+}
+
+
+static time_t CalculateRuntime(time_t time, uint32_t minute)
+{
+  struct tm tm;
+  Blocaltime(&time, &tm);
+  tm.tm_min = minute;
+  tm.tm_sec = 0;
+  return mktime(&tm);
+}
+
+static void AddJobsForThisAndNextHourToQueue()
+{
+  Dmsg0(debuglevel, "enter AddJobsForThisAndNextHourToQueue()\n");
+
+  BrokenDownTime now(time_adapter->time_source_->SystemTime());
+  now.PrintDebugMessage(debuglevel);
+
+  BrokenDownTime next_hour(now.time_ + 3600);
+  next_hour.PrintDebugMessage(debuglevel);
+
+  JobResource* job = nullptr;
+
+  LockRes(my_config);
+  foreach_res (job, R_JOB) {
+    if (JobIsDisabled(job)) { continue; }
+
+    Dmsg1(debuglevel, "Got job: %s\n", job->resource_name_);
+
+    for (RunResource* run = job->schedule->run; run; run = run->next) {
+      bool run_now = now.CalculateRun(run->date_time_bitfield);
+      bool run_next_hour = next_hour.CalculateRun(run->date_time_bitfield);
+
+      Dmsg3(debuglevel, "run@%p: run_now=%d run_next_hour=%d\n", run, run_now,
+            run_next_hour);
+
+      if (run_now || run_next_hour) {
+        time_t runtime = CalculateRuntime(now.time_, run->minute);
+        if (run_now) { AddJobToQueue(job, run, now.time_, runtime); }
+        if (run_next_hour) {
+          AddJobToQueue(job, run, now.time_, runtime + 3600);
+        }
+      }
+    }
+  }
+  UnlockRes(my_config);
+  Dmsg0(debuglevel, "Leave AddJobsForThisAndNextHourToQueue()\n");
+}
+
+static void AddJobToQueue(JobResource* job,
+                          RunResource* run,
+                          time_t now,
+                          time_t runtime)
+{
+  if (((runtime - run->last_run) < 61) || ((runtime + 59) < now)) { return; }
+
+  try {
+    prioritised_job_item_queue.EmplaceItem(job, run, runtime);
+  } catch (const std::invalid_argument& e) {
+    Dmsg1(debuglevel, "Could not emplace job: %s\n", e.what());
+  }
 }
 
 static void SetJcrFromRunResource(JobControlRecord* jcr, RunResource* run)
@@ -140,132 +279,6 @@ static void SetJcrFromRunResource(JobControlRecord* jcr, RunResource* run)
   }
 
   if (run->MaxRunSchedTime_set) { jcr->MaxRunSchedTime = run->MaxRunSchedTime; }
-}
-
-static void WaitFor(std::chrono::seconds wait_interval)
-{
-  std::unique_lock<std::mutex> ul(wait_mutex);
-  wait_condition.wait_for(ul, wait_interval);
-}
-
-static JobControlRecord* TryCreateJobControlRecord(SchedulerJobItem& next_job)
-{
-  if (JobIsDisabled(next_job.job_)) {
-    return nullptr;
-  } else {
-    next_job.run_->last_run = scheduler_settings->time_source_.SystemTime();
-    JobControlRecord* jcr = new_jcr(sizeof(JobControlRecord), DirdFreeJcr);
-    SetJcrDefaults(jcr, next_job.job_);
-    SetJcrFromRunResource(jcr, next_job.run_);
-    Dmsg0(debuglevel, "Leave SchedulerWaitForNextJob()\n");
-    return jcr;
-  }
-}
-
-static void FillJobQueue()
-{
-  while (active && prioritised_job_item_queue.Empty()) {
-    if (!AddJobsForThisAndNextHourToQueue()) {
-      WaitFor(std::chrono::seconds(scheduler_settings->default_wait_interval_));
-    }
-  }
-}
-
-static void AwaitAndRunJobs()
-{
-  while (active && !prioritised_job_item_queue.Empty()) {
-    SchedulerJobItem next_job = prioritised_job_item_queue.TakeOutTopItem();
-    if (!next_job.is_valid_) { break; }
-    time_t now = scheduler_settings->time_source_.SystemTime();
-    time_t wait = next_job.runtime_ - now;
-    if (wait <= 0) {
-      JobControlRecord* jcr = TryCreateJobControlRecord(next_job);
-      if (jcr) { ExecuteJob(jcr); }
-    } else {
-      time_t wait_interval{scheduler_settings->default_wait_interval_ < wait
-                               ? scheduler_settings->default_wait_interval_
-                               : wait};
-      WaitFor(std::chrono::seconds(wait_interval));
-    }
-  }  // while (active && next_job.is_valid_)
-}
-
-void RunScheduler()
-{
-  active = true;
-  while (active) {
-    Dmsg0(debuglevel, "Enter SchedulerWaitForNextJob\n");
-    FillJobQueue();
-    AwaitAndRunJobs();
-  }
-  prioritised_job_item_queue.Clear();
-}
-
-void TerminateScheduler()
-{
-  active = false;
-  wait_condition.notify_one();
-}
-
-static time_t CalculateRuntime(time_t time, uint32_t minute)
-{
-  struct tm tm;
-  Blocaltime(&time, &tm);
-  tm.tm_min = minute;
-  tm.tm_sec = 0;
-  return mktime(&tm);
-}
-
-static bool AddJobsForThisAndNextHourToQueue()
-{
-  Dmsg0(debuglevel, "enter AddJobsForThisAndNextHourToQueue()\n");
-
-  BrokenDownTime now(scheduler_settings->time_source_.SystemTime());
-  now.PrintDebugMessage(debuglevel);
-
-  BrokenDownTime next_hour(now.time + 3600);
-  next_hour.PrintDebugMessage(debuglevel);
-
-  JobResource* job = nullptr;
-  bool job_added = false;
-
-  LockRes(my_config);
-  foreach_res (job, R_JOB) {
-    if (JobIsDisabled(job)) { continue; }
-
-    Dmsg1(debuglevel, "Got job: %s\n", job->resource_name_);
-
-    for (RunResource* run = job->schedule->run; run; run = run->next) {
-      bool run_now = now.CalculateRun(run->date_time_bitfield);
-      bool run_nh = next_hour.CalculateRun(run->date_time_bitfield);
-
-      Dmsg3(debuglevel, "run@%p: run_now=%d run_nh=%d\n", run, run_now, run_nh);
-
-      if (run_now || run_nh) {
-        time_t runtime = CalculateRuntime(now.time, run->minute);
-        if (run_now) { AddJobToQueue(job, run, now.time, runtime); }
-        if (run_nh) { AddJobToQueue(job, run, now.time, runtime + 3600); }
-        job_added = true;
-      }
-    }
-  }
-  UnlockRes(my_config);
-  Dmsg0(debuglevel, "Leave AddJobsForThisAndNextHourToQueue()\n");
-  return job_added;
-}
-
-static void AddJobToQueue(JobResource* job,
-                          RunResource* run,
-                          time_t now,
-                          time_t runtime)
-{
-  if (((runtime - run->last_run) < 61) || ((runtime + 59) < now)) { return; }
-
-  try {
-    prioritised_job_item_queue.EmplaceItem(job, run, runtime);
-  } catch (const std::invalid_argument& e) {
-    Dmsg1(debuglevel, "Could not emplace job: %s\n", e.what());
-  }
 }
 
 } /* namespace directordaemon */

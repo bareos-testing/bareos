@@ -235,7 +235,6 @@ static void usage()
 int main(int argc, char* argv[])
 {
   int ch;
-  JobControlRecord* jcr;
   cat_op mode;
   bool no_signals = false;
   bool export_config = false;
