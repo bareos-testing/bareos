@@ -21,30 +21,32 @@
    02110-1301, USA.
 */
 
-#ifndef BAREOS_SRC_DIRD_BROKEN_DOWN_TIME_H_
-#define BAREOS_SRC_DIRD_BROKEN_DOWN_TIME_H_
+#ifndef BAREOS_SRC_DIRD_RUN_HOUR_VALIDATOR_H_
+#define BAREOS_SRC_DIRD_RUN_HOUR_VALIDATOR_H_
 
 namespace directordaemon {
 
 class DateTimeBitfield;
 
-class BrokenDownTime {
+class RunHourValidator {
  public:
-  BrokenDownTime(time_t time);
+  RunHourValidator(time_t time);
   void PrintDebugMessage(int debuglevel) const;
-  bool CalculateRun(const DateTimeBitfield& date_time_bitfield);
+  bool TriggersOn(const DateTimeBitfield& date_time_bitfield);
+  time_t Time() const { return time_; }
 
-  int hour{0};
-  int mday{0};
-  int wday{0};
-  int month{0};
-  int wom{0};
-  int woy{0};
-  int yday{0};
+ private:
+  int hour_{0};
+  int mday_{0};
+  int wday_{0};
+  int month_{0};
+  int wom_{0};
+  int woy_{0};
+  int yday_{0};
   time_t time_{0};
-  bool is_last_week{false};
+  bool is_last_week_{false};
 };
 
 }  // namespace directordaemon
 
-#endif  // BAREOS_SRC_DIRD_BROKEN_DOWN_TIME_H_
+#endif  // BAREOS_SRC_DIRD_RUN_HOUR_VALIDATOR_H_

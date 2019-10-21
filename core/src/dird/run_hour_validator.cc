@@ -22,7 +22,7 @@
 */
 
 #include "include/bareos.h"
-#include "dird/broken_down_time.h"
+#include "dird/run_hour_validator.h"
 #include "dird/date_time_bitfield.h"
 
 #include <iostream>
@@ -58,35 +58,35 @@ static bool IsDayOfYearInLastWeek(int year, int doy)
   return false;
 }
 
-BrokenDownTime::BrokenDownTime(time_t time) : time_(time)
+// calculate the current hour of the year
+RunHourValidator::RunHourValidator(time_t time) : time_(time)
 {
   struct tm tm;
   localtime_r(&time_, &tm);
-  hour = tm.tm_hour;
-  mday = tm.tm_mday - 1;
-  wday = tm.tm_wday;
-  month = tm.tm_mon;
-  wom = mday / 7;
-  woy = TmWoy(time_); /* get week of year */
-  yday = tm.tm_yday;  /* get day of year */
-  is_last_week = IsDayOfYearInLastWeek(tm.tm_year + 1900, yday);
+  hour_ = tm.tm_hour;
+  mday_ = tm.tm_mday - 1;
+  wday_ = tm.tm_wday;
+  month_ = tm.tm_mon;
+  wom_ = mday_ / 7;
+  woy_ = TmWoy(time_); /* get week of year */
+  yday_ = tm.tm_yday;  /* get day of year */
+  is_last_week_ = IsDayOfYearInLastWeek(tm.tm_year + 1900, yday_);
 }
 
-void BrokenDownTime::PrintDebugMessage(int debuglevel) const
+// check if the calculated hour matches the runtime bitfiled
+bool RunHourValidator::TriggersOn(const DateTimeBitfield& bits)
+{
+  return BitIsSet(hour_, bits.hour) && BitIsSet(mday_, bits.mday) &&
+         BitIsSet(wday_, bits.wday) && BitIsSet(month_, bits.month) &&
+         (BitIsSet(wom_, bits.wom) ||
+          (is_last_week_ && bits.last_week_of_month)) &&
+         BitIsSet(woy_, bits.woy);
+}
+
+void RunHourValidator::PrintDebugMessage(int debuglevel) const
 {
   Dmsg8(debuglevel, "now = %x: h=%d m=%d md=%d wd=%d wom=%d woy=%d yday=%d\n",
-        time, hour, month, mday, wday, wom, woy, yday);
+        time_, hour_, month_, mday_, wday_, wom_, woy_, yday_);
 }
-
-
-bool BrokenDownTime::CalculateRun(const DateTimeBitfield& bits)
-{
-  return BitIsSet(hour, bits.hour) && BitIsSet(mday, bits.mday) &&
-         BitIsSet(wday, bits.wday) && BitIsSet(month, bits.month) &&
-         (BitIsSet(wom, bits.wom) ||
-          (is_last_week && bits.last_week_of_month)) &&
-         BitIsSet(woy, bits.woy);
-}
-
 
 }  // namespace directordaemon

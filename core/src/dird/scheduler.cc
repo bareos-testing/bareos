@@ -34,7 +34,7 @@
 
 #include "include/bareos.h"
 #include "dird.h"
-#include "dird/broken_down_time.h"
+#include "dird/run_hour_validator.h"
 #include "dird/dird_globals.h"
 #include "dird/job.h"
 #include "dird/scheduler.h"
@@ -128,7 +128,7 @@ static void WaitForJobsToRun()
             std::chrono::seconds(wait_interval));
       }
     }
-  }  // while (active && next_job.is_valid_)
+  }
 }
 
 static void FillSchedulerJobQueue()
@@ -179,10 +179,10 @@ static void AddJobsForThisAndNextHourToQueue()
 {
   Dmsg0(debuglevel, "enter AddJobsForThisAndNextHourToQueue()\n");
 
-  BrokenDownTime now(time_adapter->time_source_->SystemTime());
-  now.PrintDebugMessage(debuglevel);
+  RunHourValidator this_hour(time_adapter->time_source_->SystemTime());
+  this_hour.PrintDebugMessage(debuglevel);
 
-  BrokenDownTime next_hour(now.time_ + 3600);
+  RunHourValidator next_hour(this_hour.Time() + 3600);
   next_hour.PrintDebugMessage(debuglevel);
 
   JobResource* job = nullptr;
@@ -194,17 +194,19 @@ static void AddJobsForThisAndNextHourToQueue()
     Dmsg1(debuglevel, "Got job: %s\n", job->resource_name_);
 
     for (RunResource* run = job->schedule->run; run; run = run->next) {
-      bool run_now = now.CalculateRun(run->date_time_bitfield);
-      bool run_next_hour = next_hour.CalculateRun(run->date_time_bitfield);
+      bool run_this_hour = this_hour.TriggersOn(run->date_time_bitfield);
+      bool run_next_hour = next_hour.TriggersOn(run->date_time_bitfield);
 
-      Dmsg3(debuglevel, "run@%p: run_now=%d run_next_hour=%d\n", run, run_now,
-            run_next_hour);
+      Dmsg3(debuglevel, "run@%p: run_now=%d run_next_hour=%d\n", run,
+            run_this_hour, run_next_hour);
 
-      if (run_now || run_next_hour) {
-        time_t runtime = CalculateRuntime(now.time_, run->minute);
-        if (run_now) { AddJobToQueue(job, run, now.time_, runtime); }
+      if (run_this_hour || run_next_hour) {
+        time_t runtime = CalculateRuntime(this_hour.Time(), run->minute);
+        if (run_this_hour) {
+          AddJobToQueue(job, run, this_hour.Time(), runtime);
+        }
         if (run_next_hour) {
-          AddJobToQueue(job, run, now.time_, runtime + 3600);
+          AddJobToQueue(job, run, this_hour.Time(), runtime + 3600);
         }
       }
     }

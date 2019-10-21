@@ -30,7 +30,7 @@
 
 #include "include/bareos.h"
 #include "dird.h"
-#include "dird/broken_down_time.h"
+#include "dird/run_hour_validator.h"
 #include "dird/dird_globals.h"
 #include "dird/fd_cmds.h"
 #include "dird/job.h"
@@ -381,13 +381,13 @@ static bool show_scheduled_preview(UaContext* ua,
   RunResource* run;
   PoolMem temp(PM_NAME);
 
-  BrokenDownTime bt(time_to_check);
+  RunHourValidator bt(time_to_check);
 
   for (run = sched->run; run; run = run->next) {
     bool run_now;
     int cnt = 0;
 
-    run_now = bt.CalculateRun(run->date_time_bitfield);
+    run_now = bt.TriggersOn(run->date_time_bitfield);
 
     if (run_now) {
       /*

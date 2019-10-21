@@ -29,10 +29,6 @@
 namespace directordaemon {
 
 struct DateTimeBitfield {
-  DateTimeBitfield()
-  {
-    //
-  }
   char hour[NbytesForBits(24 + 1)]{0};
   char mday[NbytesForBits(31 + 1)]{0};
   char month[NbytesForBits(12 + 1)]{0};

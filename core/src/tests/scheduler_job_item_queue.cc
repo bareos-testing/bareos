@@ -23,7 +23,7 @@
 #include "dird/dird_globals.h"
 #include "dird/scheduler.h"
 #include "dird/scheduler_job_item_queue.h"
-#include "dird/broken_down_time.h"
+#include "dird/run_hour_validator.h"
 #include "dird/dird_conf.h"
 
 using namespace directordaemon;
