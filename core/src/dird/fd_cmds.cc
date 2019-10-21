@@ -375,8 +375,6 @@ int SendJobInfoToFileDaemon(JobControlRecord* jcr)
       return 0;
     } else if (jcr->db) {
       ClientDbRecord cr;
-
-      memset(&cr, 0, sizeof(cr));
       bstrncpy(cr.Name, jcr->res.client->resource_name_, sizeof(cr.Name));
       cr.AutoPrune = jcr->res.client->AutoPrune;
       cr.FileRetention = jcr->res.client->FileRetention;

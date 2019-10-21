@@ -24,11 +24,34 @@
 #ifndef BAREOS_DIRD_SCHEDULER_H_
 #define BAREOS_DIRD_SCHEDULER_H_
 
+#include <memory>
+#include <functional>
+
+class JobControlRecord;
+
 namespace directordaemon {
 
-void RunScheduler();
-void TerminateScheduler();
-void ClearSchedulerQueue();
+class JobResource;
+class SchedulerPrivate;
+class SchedulerTimeAdapter;
+
+class Scheduler {
+ public:
+  Scheduler();
+  Scheduler(std::unique_ptr<SchedulerTimeAdapter> time_adapter,
+            std::function<void(JobControlRecord*)> ExecuteJob);
+  ~Scheduler();
+
+  void Run();
+  void Terminate();
+  void ClearQueue();
+  void AddJobWithNoRunResourceToQueue(JobResource* job);
+
+ private:
+  std::unique_ptr<SchedulerPrivate> impl_;
+};
+
+Scheduler& GetMainScheduler();
 
 } /* namespace directordaemon */
 

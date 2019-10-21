@@ -39,7 +39,12 @@ class SystemTimeSource : public TimeSource {
     std::chrono::milliseconds wait_increment = std::chrono::milliseconds(100);
     std::size_t loop_count = wait_interval / wait_increment;
 
+    // avoid loop counter wrap due to roundoff
+    if (loop_count == 0) { loop_count = 1; }
+
     while (running_ && loop_count--) {
+      // cannot use condition variable because notify_one
+      // does not securely work in a signal handler
       std::this_thread::sleep_for(wait_increment);
     }
   }

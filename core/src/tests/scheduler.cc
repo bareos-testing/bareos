@@ -46,13 +46,40 @@ namespace directordaemon {
 bool DoReloadConfig() { return false; }
 }  // namespace directordaemon
 
+class SimulatedTimeAdapter : public SchedulerTimeAdapter {
+ public:
+  // for higher precision use
+  // SimulatedTimeSource::SleepBetweenTicksMode::kSleep (runs ~100sec)
+  SimulatedTimeAdapter()
+      : SchedulerTimeAdapter(std::make_unique<SimulatedTimeSource>())
+  {
+    default_wait_interval_ = 60;
+  }
+};
+
+static std::unique_ptr<Scheduler> scheduler;
+static SimulatedTimeAdapter* time_adapter;
+
+class SchedulerTest : public ::testing::Test {
+  void SetUp() override
+  {
+    std::unique_ptr<SimulatedTimeAdapter> ta =
+        std::make_unique<SimulatedTimeAdapter>();
+    time_adapter = ta.get();
+
+    scheduler = std::make_unique<Scheduler>(std::move(ta),
+                                            SimulatedTimeSource::ExecuteJob);
+  }
+  void TearDown() override { scheduler.reset(); }
+};
+
 static void StopScheduler(std::chrono::milliseconds timeout)
 {
   std::this_thread::sleep_for(timeout);
-  TerminateScheduler();
+  scheduler->Terminate();
 }
 
-TEST(scheduler, terminate)
+TEST_F(SchedulerTest, terminate)
 {
   InitMsg(NULL, NULL); /* initialize message handler */
 
@@ -66,13 +93,13 @@ TEST(scheduler, terminate)
 
   std::thread scheduler_canceler(StopScheduler, std::chrono::milliseconds(200));
 
-  RunScheduler();
+  scheduler->Run();
 
   scheduler_canceler.join();
   delete my_config;
 }
 
-TEST(scheduler, system_time_source)
+TEST_F(SchedulerTest, system_time_source)
 {
   SystemTimeSource s;
   time_t start = s.SystemTime();
@@ -82,7 +109,7 @@ TEST(scheduler, system_time_source)
   EXPECT_LT(end - start, 2);
 }
 
-TEST(scheduler, system_time_source_canceled)
+TEST_F(SchedulerTest, system_time_source_canceled)
 {
   SystemTimeSource s;
 
@@ -104,18 +131,6 @@ TEST(scheduler, system_time_source_canceled)
   EXPECT_TRUE(end_equals_start || end_wrapped_to_next_second_while_waiting);
 }
 
-class SimulatedTimeAdapter : public SchedulerTimeAdapter {
- public:
-  // for higher precision use
-  // SimulatedTimeSource::SleepBetweenTicksMode::kSleep (runs ~100sec)
-  SimulatedTimeAdapter()
-      : SchedulerTimeAdapter(std::make_unique<SimulatedTimeSource>(
-            SimulatedTimeSource::SleepBetweenTicksMode::kNoSleep))
-  {
-    default_wait_interval_ = 60;
-  }
-};
-
 static std::vector<time_t> list_of_job_execution_time_stamps;
 static std::vector<time_t> list_of_time_gaps_between_adjacent_jobs;
 static int maximum_number_of_jobs_run{0};
@@ -124,16 +139,13 @@ static int counter_of_number_of_jobs_run{0};
 void SimulatedTimeSource::ExecuteJob(JobControlRecord* jcr)
 {
   // called by the scheduler to simulate a job run
-
-  time_t t{clock_value_};
-
   counter_of_number_of_jobs_run++;
 
-  // remember the start time of the simulated job
-  list_of_job_execution_time_stamps.push_back(t);
+  list_of_job_execution_time_stamps.emplace_back(
+      time_adapter->time_source_->SystemTime());
 
   if (counter_of_number_of_jobs_run == maximum_number_of_jobs_run) {
-    TerminateScheduler();
+    scheduler->Terminate();
   }
 
   // auto tm = *std::gmtime(&t);
@@ -157,7 +169,7 @@ static int CalculateAverage()
   return sum / list_of_time_gaps_between_adjacent_jobs.size();
 }
 
-TEST(scheduler, hourly)
+TEST_F(SchedulerTest, hourly)
 {
   InitMsg(NULL, NULL);
 
@@ -174,19 +186,13 @@ TEST(scheduler, hourly)
   my_config->ParseConfig();
   ASSERT_TRUE(PopulateDefs());
 
-  if (debug) {
-    std::cout << "Override Scheduler Defaults with Simulation" << std::endl;
-  }
-  OverrideSchedulerDefaults(std::make_unique<SimulatedTimeAdapter>(),
-                            SimulatedTimeSource::ExecuteJob);
-
   list_of_job_execution_time_stamps.clear();
   list_of_time_gaps_between_adjacent_jobs.clear();
   counter_of_number_of_jobs_run = 0;
   maximum_number_of_jobs_run = 25;
 
   if (debug) { std::cout << "Run scheduler" << std::endl; }
-  RunScheduler();
+  scheduler->Run();
 
   if (debug) { std::cout << "End" << std::endl; }
   delete my_config;
@@ -221,7 +227,7 @@ TEST(scheduler, hourly)
   EXPECT_FALSE(average_time_between_adjacent_jobs_is_too_high);
 }
 
-TEST(scheduler, on_time)
+TEST_F(SchedulerTest, on_time)
 {
   InitMsg(NULL, NULL);
 
@@ -238,18 +244,12 @@ TEST(scheduler, on_time)
   my_config->ParseConfig();
   ASSERT_TRUE(PopulateDefs());
 
-  if (debug) {
-    std::cout << "Override Scheduler Defaults with Simulation" << std::endl;
-  }
-  OverrideSchedulerDefaults(std::make_unique<SimulatedTimeAdapter>(),
-                            SimulatedTimeSource::ExecuteJob);
-
   list_of_job_execution_time_stamps.clear();
   maximum_number_of_jobs_run = 3;
   counter_of_number_of_jobs_run = 0;
 
   if (debug) { std::cout << "Run scheduler" << std::endl; }
-  RunScheduler();
+  scheduler->Run();
 
   for (const auto& t : list_of_job_execution_time_stamps) {
     auto tm = *std::localtime(&t);
@@ -258,7 +258,7 @@ TEST(scheduler, on_time)
     EXPECT_TRUE(is_two_o_clock);
     EXPECT_TRUE(is_monday);
     if (debug || !is_two_o_clock || !is_monday) {
-      std::cout << std::put_time(&tm, "%A:%H:%M:%S ") << std::endl;
+      std::cout << std::put_time(&tm, "%A, %d-%m-%Y %H:%M:%S ") << std::endl;
     }
   }
 

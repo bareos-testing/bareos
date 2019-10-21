@@ -57,16 +57,16 @@ SchedulerJobItemQueue::~SchedulerJobItemQueue() = default;
 
 SchedulerJobItem SchedulerJobItemQueue::TakeOutTopItem()
 {
-  SchedulerJobItem job_item;
+  SchedulerJobItem job_item_with_highest_priority;
 
   std::lock_guard<std::mutex> lg(impl_->mutex);
 
   if (!impl_->priority_queue.empty()) {
-    job_item = impl_->priority_queue.top();
+    job_item_with_highest_priority = impl_->priority_queue.top();
     impl_->priority_queue.pop();
   }
 
-  return job_item;
+  return job_item_with_highest_priority;
 }
 
 void SchedulerJobItemQueue::EmplaceItem(JobResource* job,

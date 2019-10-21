@@ -22,6 +22,8 @@
 #ifndef BAREOS_SRC_DIRD_SCHEDULER_JOB_ITEM_QUEUE_H_
 #define BAREOS_SRC_DIRD_SCHEDULER_JOB_ITEM_QUEUE_H_
 
+#include "include/bareos.h"
+
 #include <queue>
 #include <vector>
 
@@ -39,7 +41,7 @@ struct SchedulerJobItem {
                    int priority)
       : job_(job), run_(run), runtime_(runtime), priority_(priority)
   {
-    is_valid_ = job && run && runtime;
+    is_valid_ = job && runtime;
   };
   JobResource* job_{nullptr};
   RunResource* run_{nullptr};

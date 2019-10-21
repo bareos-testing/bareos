@@ -47,10 +47,6 @@ class SchedulerTimeAdapter {
   }
 };
 
-void OverrideSchedulerDefaults(
-    std::unique_ptr<SchedulerTimeAdapter> time_adapter,
-    std::function<void(JobControlRecord*)> ExecuteJob);
-
 } /* namespace directordaemon */
 
 #endif  // BAREOS_SRC_DIRD_SCHEDULER_TIME_ADAPTER_H_

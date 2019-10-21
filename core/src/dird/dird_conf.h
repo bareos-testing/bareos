@@ -710,6 +710,7 @@ class RunResource : public BareosResource {
   time_t last_run = {0}; /* last time run */
   time_t next_run = {0}; /* next time to run */
   DateTimeBitfield date_time_bitfield;
+  bool is_manual_run = false;
 };
 
 ConfigurationParser* InitDirConfig(const char* configfile, int exit_code);

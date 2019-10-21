@@ -462,7 +462,7 @@ int main(int argc, char* argv[])
     JobControlRecord* jcr = PrepareJobToRun(runjob);
     if (jcr) { ExecuteJob(jcr); }
   } else {
-    RunScheduler();
+    GetMainScheduler().Run();
   }
 
 bail_out:
@@ -504,7 +504,7 @@ static
     DeletePidFile(me->pid_directory, "bareos-dir",
                   GetFirstPortHostOrder(me->DIRaddrs));
   }
-  TerminateScheduler();
+  GetMainScheduler().Terminate();
   TermJobServer();
 
   if (runjob) { free(runjob); }
@@ -631,7 +631,7 @@ bool DoReloadConfig()
     int num_running_jobs = 0;
     resource_table_reference* new_table = NULL;
 
-    ClearSchedulerQueue();
+    GetMainScheduler().ClearQueue();
     foreach_jcr (jcr) {
       if (jcr->getJobType() != JT_SYSTEM) {
         if (!new_table) {
@@ -991,7 +991,6 @@ static bool CheckCatalog(cat_op mode)
     /* Ensure basic client record is in DB */
     ClientResource* client;
     foreach_res (client, R_CLIENT) {
-      ClientDbRecord cr;
       /* Create clients only if they use the current catalog */
       if (client->catalog != catalog) {
         Dmsg3(500, "Skip client=%s with cat=%s not catalog=%s\n",
@@ -1001,7 +1000,7 @@ static bool CheckCatalog(cat_op mode)
       }
       Dmsg2(500, "create cat=%s for client=%s\n",
             client->catalog->resource_name_, client->resource_name_);
-      memset(&cr, 0, sizeof(cr));
+      ClientDbRecord cr;
       bstrncpy(cr.Name, client->resource_name_, sizeof(cr.Name));
       db->CreateClientRecord(NULL, &cr);
     }
@@ -1011,8 +1010,6 @@ static bool CheckCatalog(cat_op mode)
     foreach_res (store, R_STORAGE) {
       StorageDbRecord sr;
       MediaTypeDbRecord mtr;
-      memset(&sr, 0, sizeof(sr));
-      memset(&mtr, 0, sizeof(mtr));
       if (store->media_type) {
         bstrncpy(mtr.MediaType, store->media_type, sizeof(mtr.MediaType));
         mtr.ReadOnly = 0;
