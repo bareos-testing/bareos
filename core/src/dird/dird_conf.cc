@@ -4193,7 +4193,7 @@ std::vector<JobResource*> GetAllJobResourcesByClientName(std::string name)
   do {
     job = static_cast<JobResource*>(my_config->GetNextRes(R_JOB, job));
     if (job && job->client) {
-      if (std::string{job->client->resource_name_} == name) {
+      if (job->client->resource_name_ == name) {
         all_matching_jobs.push_back(job);
       }
     }
