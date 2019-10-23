@@ -144,6 +144,8 @@ void SimulatedTimeSource::ExecuteJob(JobControlRecord* jcr)
   list_of_job_execution_time_stamps.emplace_back(
       time_adapter->time_source_->SystemTime());
 
+  if (debug) { std::cout << jcr->res.job->resource_name_ << std::endl; }
+
   if (counter_of_number_of_jobs_run == maximum_number_of_jobs_run) {
     scheduler->Terminate();
   }
@@ -263,5 +265,39 @@ TEST_F(SchedulerTest, on_time)
   }
 
   if (debug) { std::cout << "End" << std::endl; }
+  delete my_config;
+}
+
+TEST_F(SchedulerTest, add_job_with_no_run_resource_to_queue)
+{
+  InitMsg(NULL, NULL);
+
+  if (debug) { std::cout << "Start test" << std::endl; }
+
+  std::string path_to_config_file{std::string(
+      PROJECT_SOURCE_DIR "/src/tests/configs/bareos-configparser-tests")};
+
+  my_config = InitDirConfig(path_to_config_file.c_str(), M_ERROR_TERM);
+  ASSERT_TRUE(my_config);
+
+  if (debug) { std::cout << "Parse config" << std::endl; }
+
+  my_config->ParseConfig();
+  ASSERT_TRUE(PopulateDefs());
+
+  counter_of_number_of_jobs_run = 0;
+  maximum_number_of_jobs_run = 1;
+
+  auto scheduler_thread{std::thread([]() { scheduler->Run(); })};
+
+  JobResource* job{dynamic_cast<JobResource*>(
+      my_config->GetResWithName(R_JOB, "backup-bareos-fd"))};
+  ASSERT_TRUE(job) << "Job Resource \"backup-bareos-fd\" not found";
+
+  scheduler->AddJobWithNoRunResourceToQueue(job);
+
+  scheduler_thread.join();
+  ASSERT_EQ(counter_of_number_of_jobs_run, 1);
+
   delete my_config;
 }

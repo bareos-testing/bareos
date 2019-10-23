@@ -95,19 +95,6 @@ TEST(scheduler_job_item_queue, job_resource_undefined)
   EXPECT_TRUE(failed);
 }
 
-TEST(scheduler_job_item_queue, run_resource_undefined)
-{
-  bool failed{false};
-  JobResource job;
-  try {
-    scheduler_job_item_queue.EmplaceItem(&job, nullptr, 123);
-  } catch (const std::invalid_argument& e) {
-    EXPECT_STREQ(e.what(), "Invalid Argument: RunResource is undefined");
-    failed = true;
-  }
-  EXPECT_TRUE(failed);
-}
-
 TEST(scheduler_job_item_queue, runtime_undefined)
 {
   bool failed{false};

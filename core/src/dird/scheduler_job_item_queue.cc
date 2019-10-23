@@ -76,15 +76,12 @@ void SchedulerJobItemQueue::EmplaceItem(JobResource* job,
   if (!job) {
     throw std::invalid_argument("Invalid Argument: JobResource is undefined");
   }
-  if (!run) {
-    throw std::invalid_argument("Invalid Argument: RunResource is undefined");
-  }
   if (!runtime) {
     throw std::invalid_argument("Invalid Argument: runtime is invalid");
   }
+  int priority = run ? (run->Priority ? run->Priority : job->Priority) : 10;
   std::lock_guard<std::mutex> lg(impl_->mutex);
-  impl_->priority_queue.emplace(job, run, runtime,
-                                run->Priority ? run->Priority : job->Priority);
+  impl_->priority_queue.emplace(job, run, runtime, priority);
 }
 
 bool SchedulerJobItemQueue::Empty() const

@@ -36,9 +36,7 @@
 #include "include/make_unique.h"
 #include "lib/parse_conf.h"
 
-#include <atomic>
 #include <chrono>
-#include <iostream>
 
 namespace directordaemon {
 
@@ -113,10 +111,10 @@ JobControlRecord* SchedulerPrivate::TryCreateJobControlRecord(
   if (!next_job.job_->client) {
     return nullptr;
   } else {
-    next_job.run_->last_run = time_adapter_->time_source_->SystemTime();
     JobControlRecord* jcr = new_jcr(sizeof(JobControlRecord), DirdFreeJcr);
     SetJcrDefaults(jcr, next_job.job_);
-    if (!next_job.run_->is_manual_run) {
+    if (next_job.run_) {
+      next_job.run_->last_run = time_adapter_->time_source_->SystemTime();
       SetJcrFromRunResource(jcr, next_job.run_);
     }
     Dmsg0(debuglevel, "Leave SchedulerWaitForNextJob()\n");
@@ -139,7 +137,6 @@ void SchedulerPrivate::WaitForJobsToRun()
       if (now >= next_job.runtime_) {
         JobControlRecord* jcr = TryCreateJobControlRecord(next_job);
         if (jcr) { ExecuteJobCallback_(jcr); }
-        if (next_job.run_->is_manual_run) { delete next_job.run_; }
         job_started = true;
       } else {
         time_t wait = next_job.runtime_ - now;
@@ -218,7 +215,11 @@ void SchedulerPrivate::AddJobToQueue(JobResource* job,
                                      time_t now,
                                      time_t runtime)
 {
-  if (((runtime - run->last_run) < 61) || ((runtime + 59) < now)) { return; }
+  if (run) {
+    if ((runtime - run->last_run) < 61) { return; }
+  }
+
+  if ((runtime + 59) < now) { return; }
 
   try {
     prioritised_job_item_queue_.EmplaceItem(job, run, runtime);
@@ -229,11 +230,8 @@ void SchedulerPrivate::AddJobToQueue(JobResource* job,
 
 void SchedulerPrivate::AddJobToQueue(JobResource* job)
 {
-  RunResource* run = new RunResource;
-  run->is_manual_run = true;
-
   time_t now = time_adapter_->time_source_->SystemTime();
-  AddJobToQueue(job, run, now, now);
+  AddJobToQueue(job, nullptr, now, now);
 }
 
 class DefaultSchedulerTimeAdapter : public SchedulerTimeAdapter {
