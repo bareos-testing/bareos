@@ -103,7 +103,6 @@ static bool DoGetVolumeInfo(DeviceControlRecord* dcr)
     Mmsg(jcr->errmsg, _("Network error on BnetRecv in req_vol_info.\n"));
     return false;
   }
-  memset(&vol, 0, sizeof(vol));
   Dmsg1(debuglevel, "<dird %s", dir->msg);
   n = sscanf(dir->msg, OK_media, vol.VolCatName, &vol.VolCatJobs,
              &vol.VolCatFiles, &vol.VolCatBlocks, &vol.VolCatBytes,
