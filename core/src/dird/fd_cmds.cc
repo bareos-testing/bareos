@@ -42,6 +42,7 @@
 #include "dird/fd_cmds.h"
 #include "dird/getmsg.h"
 #include "dird/msgchan.h"
+#include "dird/scheduler.h"
 #include "lib/berrno.h"
 #include "lib/bsock_tcp.h"
 #include "lib/bnet.h"
@@ -987,7 +988,7 @@ bool SendPluginOptions(JobControlRecord* jcr)
 
       fd->fsend(pluginoptionscmd, cur_plugin_options.c_str());
       if (!response(jcr, fd, OKPluginOptions, "PluginOptions", DISPLAY_ERROR)) {
-      	Jmsg(jcr, M_FATAL, 0, _("Plugin options failed.\n"));
+        Jmsg(jcr, M_FATAL, 0, _("Plugin options failed.\n"));
         return false;
       }
     }
@@ -1333,6 +1334,20 @@ void DoClientResolve(UaContext* ua, ClientResource* client)
   return;
 }
 
+static void AddJobsOnClientInitiatedConnect(std::string client_name)
+{
+  std::vector<JobResource*> job_resources =
+      GetAllJobResourcesByClientName(client_name.c_str());
+
+  if (!job_resources.empty()) {
+    for (auto job : job_resources) {
+      if (job->ScheduleOnClientConnectInterval != 0) {
+        GetMainScheduler().AddJobWithNoRunResourceToQueue(job);
+      }
+    }
+  }
+}
+
 /**
  * After receiving a connection (in socket_server.c) if it is
  * from the File daemon, this routine is called.
@@ -1373,6 +1388,8 @@ void* HandleFiledConnection(ConnectionPool* connections,
     Emsg0(M_ERROR, 0, "Failed to add connection to pool.\n");
     goto getout;
   }
+
+  AddJobsOnClientInitiatedConnect(client_name);
 
   /*
    * The connection is now kept in connection_pool.
