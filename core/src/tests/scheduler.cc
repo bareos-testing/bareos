@@ -48,8 +48,6 @@ bool DoReloadConfig() { return false; }
 
 class SimulatedTimeAdapter : public SchedulerTimeAdapter {
  public:
-  // for higher precision use
-  // SimulatedTimeSource::SleepBetweenTicksMode::kSleep (runs ~100sec)
   SimulatedTimeAdapter()
       : SchedulerTimeAdapter(std::make_unique<SimulatedTimeSource>())
   {

@@ -49,9 +49,12 @@ TEST(scheduler_job_item_queue, priority_and_time)
   std::vector<JobResource> job_resources(4);
   std::vector<RunResource> run_resources(job_resources.size());
 
+  /* JobResource::selection_type is used here as a helper variable
+   * to store the expected place in the run order*/
+
   time_t runtime = now;
   run_resources[0].Priority = 10;
-  job_resources[0].selection_type = 1;  // runs first
+  job_resources[0].selection_type = 1;  // runs first (see above)
   scheduler_job_item_queue.EmplaceItem(&job_resources[0], &run_resources[0],
                                        runtime);
   runtime = now + 1;

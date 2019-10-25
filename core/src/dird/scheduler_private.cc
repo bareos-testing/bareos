@@ -44,11 +44,11 @@ static const int debuglevel = 200;
 
 static bool IsAutomaticSchedulerJob(JobResource* job)
 {
-  if (!job->schedule) { return true; }
-  if (!job->schedule->enabled) { return true; }
-  if (!job->enabled) { return true; }
-  if (job->client && !job->client->enabled) { return true; }
-  return false;
+  if (!job->schedule) { return false; }
+  if (!job->schedule->enabled) { return false; }
+  if (!job->enabled) { return false; }
+  if (job->client && !job->client->enabled) { return false; }
+  return true;
 }
 
 static void SetJcrFromRunResource(JobControlRecord* jcr, RunResource* run)
@@ -184,7 +184,7 @@ void SchedulerPrivate::AddJobsForThisAndNextHourToQueue()
 
   LockRes(my_config);
   foreach_res (job, R_JOB) {
-    if (IsAutomaticSchedulerJob(job)) { continue; }
+    if (!IsAutomaticSchedulerJob(job)) { continue; }
 
     Dmsg1(debuglevel, "Got job: %s\n", job->resource_name_);
 
@@ -239,6 +239,7 @@ class DefaultSchedulerTimeAdapter : public SchedulerTimeAdapter {
   DefaultSchedulerTimeAdapter()
       : SchedulerTimeAdapter(std::make_unique<SystemTimeSource>())
   {
+    default_wait_interval_ = 60;
   }
 };
 
