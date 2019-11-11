@@ -171,9 +171,22 @@ General Information
 
 Bugfixes and Changes
 ^^^^^^^^^^^^^^^^^^^^
+* :ticket:`990`: SD sometimes tries to load empty tape slot
+* :ticket:`1030`: bscan does not work for migration and copy jobs
+* :ticket:`1056`: NDMP restore on 16.2.5 and above does not fill NDMP environment correctly
+* :ticket:`1058`: 18.2.6 build error while cmake don't build the correct dependency's
+* :ticket:`1059`: Webui spams Apache error_log with bconsole messages
+* :ticket:`1072`: Newer versions of Fedora use stricter code checking
+* :ticket:`1095`: webui: when login as a user without the permission to the ".api" command, the webui show a wrong and ugly error message
+* :ticket:`1100`: bconsole crashes when a pam authentication aborts
+* :ticket:`1112`: After mount/unmount of tape "status slots" shows empty list
+* All deamons: fix buffer overrun in PathAppend
+* |dir|: add support for MySQL 8
+* |dir|: Fix nullptr cornercase in mtx-changer parser
 * |webui|: Fix overflowing top navigation bar content
 * |webui|: Fix always active debug messages in error.log
 * |webui|: Bvfs cache update notification added
+* Documentation: various improvements and updates
 
 .. _bareos-1826-releasenotes:
 
