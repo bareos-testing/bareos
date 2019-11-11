@@ -1,3 +1,11 @@
+%if 0%{?rhel} >= 0 || 0%{?fedora} >= 0
+%define debug_package %{nil}
+%endif
+
+%if 0%{?rhel} >= 8 || 0%{?fedora} >= 32
+%define skip_python2 1
+%endif
+
 %{?!python_module:%define python_module() python-%{**} python3-%{**}}
 Name:           python-bareos
 Version:        0
@@ -12,7 +20,7 @@ BuildRoot:      %{_tmppath}/%{name}-root
 BuildRequires:  python-rpm-macros
 BuildRequires:  %{python_module devel}
 BuildRequires:  %{python_module setuptools}
-BuildRequires:  fdupes
+#BuildRequires:  fdupes
 
 %python_subpackages
 
@@ -26,12 +34,11 @@ It also includes some tools based on this module.
 %setup -q
 
 %build
-export CFLAGS="%{optflags}"
 %python_build
 
 %install
 %python_install
-%python_expand %fdupes %{buildroot}%{$python_sitelib}
+#%%python_expand %%fdupes %%{buildroot}%%{$python_sitelib}
 
 %check
 # does not work, as it tries to download other packages from pip
