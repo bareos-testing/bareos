@@ -80,17 +80,21 @@ General Information
 
 New Features
 ^^^^^^^^^^^^
-* Updated documentation
-* |webui|: Restore a specific file version 
+* |webui|: :ref:`section-webui-restore` a specific file version
+* Display a summary before performing a restore in the |webui|
+* New configuration parameter *filetree_refresh_timeout* has been added to configuration.ini file of the |webui| to set a custom timeout while refreshing the file tree (.bvfs_cache_update) in the restore module (:ref:`section-updating-bvfs-cache-frequently`)
+* Configuration: :ref:`DirectorResourceUser` for pam authentication
+* Configuration: : Simplified :ref:`StorageResourceMultipliedDevice` Storage Configuration
 
 Changed Features
 ^^^^^^^^^^^^^^^^
-* Updated |webui| localization
-* A few PHP Warnings and Notices, JS and CSS errors have been removed
-* Restricted console profile examples for limited and read-only purposes have been added to the |webui| package
 * Improved Command ACL handling and error messages in the |webui|
-* Display a summary before performing a restore in the |webui|
-* New configuration parameter filetree_refresh_timeout has been added to configuration.ini file of the |webui| to set a custom timeout while refreshing the file tree (.bvfs_cache_update) in the restore module.
+* Restricted console profile examples for limited and read-only purposes have been added to the |webui| package
+* Updated |webui| localization
+* Configuration: Do not allow empty passwords for mandatory passwords
+* All deamons: Generate a log message if extended attributes are disabled automatically
+* All deamons: replace crc32 implementation with a faster one
+* |dir|: Add support for MySQL 8
 
 Deprecated and Removed Features
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -98,9 +102,21 @@ Deprecated and Removed Features
 
 Bugs Fixed
 ^^^^^^^^^^
-* :issue:`1059`: Fix Webui spams Apache error_log with bconsole messages
-* :issue:`0000`: Fix Application Controller Plugin - CommandACLPlugin
-* :issue:`0000`: Fix overflowing top navigation bar content hiding tab navigation in some modules
+* :ticket:`385`: bareos daemon stop restart hang if bareos-tray-monitor is connected
+* :ticket:`975`: .bvfs\_lsdirs limit offset command parameters do not work properly
+* :ticket:`1004`: Very high cpu usage on Debian stretch
+* :ticket:`1034`: Read error on tape may be misinterpreted as end-of-tape
+* :ticket:`1045`: webui login problem
+* :ticket:`1049`: Translation in German webUI
+* :ticket:`1064`: bconsole crashes after 5 minutes in restore operation due to forgotten watchdog
+* :ticket:`1073`: pthread\_detach for FreeBSD (PR169)
+* :ticket:`1091`: NDMP to NDMP Copy Job Fails
+* :ticket:`1123`: Director can crash during TwoWay Authentication
+* Fix Application Controller Plugin in the |webui| - CommandACLPlugin
+* Fix overflowing top navigation bar content hiding tab navigation in some modules in the |webui|
+* Fix buffer overrun in function PathAppend
+* Fix nullptr cornercase in mtx-changer parser
+* See :ref:`bareos-18.2.7` for more bugfixes
 
 Updated Documentation
 ^^^^^^^^^^^^^^^^^^^^^
@@ -109,10 +125,17 @@ Updated Documentation
 * |webui| Access Control Configuration: :ref:`section-webui-access-control-configuration`
 * |webui| Restore: :ref:`section-webui-restore`
 * Developer Guide: :ref:`section-dev-webui-command-usage-in-modules`
+* Documentation: Add message diagrams for backup, restore and verify
+* Documentation: Correct configuration expamles and rewrite several feature introductions
+* Documentation: Improve documentation of postgresql database schema and add diagrams
 
 Internal Project Changes
 ^^^^^^^^^^^^^^^^^^^^^^^^
-* todo
+* All deamons: Smartalloc has been removed from the sourcecode
+* All deamons: Removed many compiler warnings
+* All deamons: Refactored scheduler, threadlist, configuration parser and recently used job-list code to be more robust and testable
+* Documentation: Merge new documentation-source structure for Sphinx-build
+* Removed PHP Warnings and Notices, JS and CSS errors
 
 
 .. _bareos-1827-releasenotes:
