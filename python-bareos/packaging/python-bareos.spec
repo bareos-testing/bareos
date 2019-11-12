@@ -8,8 +8,8 @@
 # https://pagure.io/packaging-committee/blob/ae14fdb50cc6665a94bc32f7d984906ce1eece45/f/guidelines/modules/ROOT/pages/Python_Appendix.adoc
 #
 
-%define python2_build_requires python2-devel python2-setuptools
-%define python3_build_requires python3-devel python3-setuptools
+%define python2_build_requires python-rpm-macros python2-devel python2-setuptools
+%define python3_build_requires python-rpm-macros python3-devel python3-setuptools
 
 %if 0%{?rhel} > 0 && 0%{?rhel} <= 6
 %define skip_python3 1
@@ -20,6 +20,7 @@
 
 Name:           python-%{srcname}
 Version:        0
+#Version: 19.1.2.1572871751.1d523ac3b2
 Release:        1%{?dist}
 License:        AGPL-3.0
 Summary:        Backup Archiving REcovery Open Sourced - Python module
@@ -28,7 +29,6 @@ Group:          Productivity/Archiving/Backup
 Vendor:         The Bareos Team
 Source:         %{name}-%{version}.tar.bz2
 BuildRoot:      %{_tmppath}/%{name}-root
-BuildRequires:  python-rpm-macros
 
 BuildArch:      noarch
 
