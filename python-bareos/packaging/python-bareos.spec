@@ -13,7 +13,7 @@
 
 %if 0%{?rhel} > 0 && 0%{?rhel} <= 6
 %define skip_python3 1
-%define python2_build_requires python-devel python-setuptools
+%define python2_build_requires python-rpm-macros python2-rpm-macros python-devel python-setuptools
 %endif
 
 %global srcname bareos
