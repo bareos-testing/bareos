@@ -1,37 +1,16 @@
 #
 # python-bareos spec file.
-# It works with SUSE and Redhat flavors.
 #
 
-#
-# REDHAT:
-#
-# Redhat builds requires some preparations:
-#
-# It requires additional RPM macro definitions,
-# that are default on SUSE.
-# Copy the provided .rpmmacros into the home directory of your build user:
-#
-# cp .rpmmacros ~
-#
-#
-# The macro _specfile must point to the file location of this file.
-# Use rpmbuild with following parameters (adapt your path accordingly):
-#
-# rpmbuild -ba -D "_specfile  %_specdir/python-bareos.spec" ~/rpmbuild/SPECS/python-bareos.spec
+# based on
+# https://docs.fedoraproject.org/en-US/packaging-guidelines/Python_Appendix/
+# specifically on
+# https://pagure.io/packaging-committee/blob/ae14fdb50cc6665a94bc32f7d984906ce1eece45/f/guidelines/modules/ROOT/pages/Python_Appendix.adoc
 #
 
+%global srcname bareos
 
-%if 0%{?rhel} >= 0 || 0%{?fedora} >= 0
-%define debug_package %{nil}
-%endif
-
-%if 0%{?rhel} >= 8 || 0%{?fedora} >= 32
-%define skip_python2 1
-%endif
-
-%{?!python_module:%define python_module() python-%{**} python3-%{**}}
-Name:           python-bareos
+Name:           python-%{srcname}
 Version:        0
 Release:        1%{?dist}
 License:        AGPL-3.0
@@ -41,38 +20,68 @@ Group:          Productivity/Archiving/Backup
 Vendor:         The Bareos Team
 Source:         %{name}-%{version}.tar.bz2
 BuildRoot:      %{_tmppath}/%{name}-root
-BuildRequires:  python-rpm-macros
-BuildRequires:  %{python_module devel}
-BuildRequires:  %{python_module setuptools}
-#BuildRequires:  fdupes
 
-%python_subpackages
+BuildArch:      noarch
 
-%description
+%global _description %{expand:
 Bareos - Backup Archiving Recovery Open Sourced - Python module
 
 This packages contains a python module to interact with a Bareos backup system.
-It also includes some tools based on this module.
+It also includes some tools based on this module.}
+
+%description %_description
+
+%package -n python2-%{srcname}
+Summary:        %{summary}
+BuildRequires:  python2-devel
+BuildRequires:  python2-setuptools
+%{?python_provide:%python_provide python2-%{srcname}}
+
+%description -n python2-%{srcname} %_description
+
+
+%package -n python3-%{srcname}
+Summary:        %{summary}
+BuildRequires:  python3-devel
+BuildRequires:  python3-setuptools
+%{?python_provide:%python_provide python3-%{srcname}}
+
+%description -n python3-%{srcname} %_description
+
 
 %prep
-#%%setup -q -n %{name}
+#%%autosetup -n %%{srcname}-%%{version}
 %setup -q
 
 %build
-%python_build
+%py2_build
+%py3_build
 
 %install
-%python_install
-#%%python_expand %%fdupes %%{buildroot}%%{$python_sitelib}
+# Must do the python2 install first because the scripts in /usr/bin are
+# overwritten with every setup.py install, and in general we want the
+# python3 version to be the default.
+%py2_install
+%py3_install
 
 %check
-# does not work, as it tries to download other packages from pip
-#%%python_exec setup.py test
+# This does not work,
+# as "test" tries to download other packages from pip.
+#%%{__python2} setup.py test
+#%%{__python3} setup.py test
 
-%files %{python_files}
+# Note that there is no %%files section for the unversioned python module if we are building for several python runtimes
+%files -n python2-%{srcname}
 %defattr(-,root,root,-)
 %doc README.rst
-%python3_only %{_bindir}/*
-%{python_sitelib}/*
+%{python2_sitelib}/%{srcname}/
+%{python2_sitelib}/python_%{srcname}-*.egg-info/
+
+%files -n python3-%{srcname}
+%defattr(-,root,root,-)
+%doc README.rst
+%{python3_sitelib}/%{srcname}/
+%{python3_sitelib}/python_%{srcname}-*.egg-info/
+%{_bindir}/*
 
 %changelog
