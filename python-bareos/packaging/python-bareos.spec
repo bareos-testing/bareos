@@ -8,8 +8,12 @@
 # https://pagure.io/packaging-committee/blob/ae14fdb50cc6665a94bc32f7d984906ce1eece45/f/guidelines/modules/ROOT/pages/Python_Appendix.adoc
 #
 
+%define python2_build_requires python2-devel python2-setuptools
+%define python3_build_requires python3-devel python3-setuptools
+
 %if 0%{?rhel} > 0 && 0%{?rhel} <= 6
 %define skip_python3 1
+%define python2_build_requires python-devel python-setuptools
 %endif
 
 %global srcname bareos
@@ -39,8 +43,7 @@ It also includes some tools based on this module.}
 
 %package -n python2-%{srcname}
 Summary:        %{summary}
-BuildRequires:  python2-devel
-BuildRequires:  python2-setuptools
+BuildRequires:  %{python2_build_requires}
 %{?python_provide:%python_provide python2-%{srcname}}
 
 %description -n python2-%{srcname} %_description
@@ -53,8 +56,7 @@ BuildRequires:  python2-setuptools
 
 %package -n python3-%{srcname}
 Summary:        %{summary}
-BuildRequires:  python3-devel
-BuildRequires:  python3-setuptools
+BuildRequires:  %{python3_build_requires}
 %{?python_provide:%python_provide python3-%{srcname}}
 
 %description -n python3-%{srcname} %_description
