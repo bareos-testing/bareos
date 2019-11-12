@@ -28,6 +28,7 @@ Group:          Productivity/Archiving/Backup
 Vendor:         The Bareos Team
 Source:         %{name}-%{version}.tar.bz2
 BuildRoot:      %{_tmppath}/%{name}-root
+BuildRequires:  python-rpm-macros
 
 BuildArch:      noarch
 
