@@ -113,7 +113,6 @@ Bugs Fixed
 * :ticket:`1091`: NDMP to NDMP Copy Job Fails
 * :ticket:`1123`: Director can crash during TwoWay Authentication
 * Fix Application Controller Plugin in the |webui| - CommandACLPlugin
-* Fix overflowing top navigation bar content hiding tab navigation in some modules in the |webui|
 * Fix buffer overrun in function PathAppend
 * Fix nullptr cornercase in mtx-changer parser
 * See :ref:`bareos-18.2.7` for more bugfixes
@@ -206,7 +205,7 @@ Bugfixes and Changes
 * All deamons: fix buffer overrun in PathAppend
 * |dir|: add support for MySQL 8
 * |dir|: Fix nullptr cornercase in mtx-changer parser
-* |webui|: Fix overflowing top navigation bar content
+* |webui|: Fix overflowing top navigation bar content hiding tab navigation in some modules
 * |webui|: Fix always active debug messages in error.log
 * |webui|: Bvfs cache update notification added
 * Documentation: various improvements and updates
