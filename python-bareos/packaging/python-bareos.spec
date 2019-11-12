@@ -1,3 +1,27 @@
+#
+# python-bareos spec file.
+# It works with SUSE and Redhat flavors.
+#
+
+#
+# REDHAT:
+#
+# Redhat builds requires some preparations:
+#
+# It requires additional RPM macro definitions,
+# that are default on SUSE.
+# Copy the provided .rpmmacros into the home directory of your build user:
+#
+# cp .rpmmacros ~
+#
+#
+# The macro _specfile must point to the file location of this file.
+# Use rpmbuild with following parameters (adapt your path accordingly):
+#
+# rpmbuild -ba -D "_specfile  %_specdir/python-bareos.spec" ~/rpmbuild/SPECS/python-bareos.spec
+#
+
+
 %if 0%{?rhel} >= 0 || 0%{?fedora} >= 0
 %define debug_package %{nil}
 %endif
@@ -31,6 +55,7 @@ This packages contains a python module to interact with a Bareos backup system.
 It also includes some tools based on this module.
 
 %prep
+#%%setup -q -n %{name}
 %setup -q
 
 %build
