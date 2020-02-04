@@ -17,6 +17,9 @@
 #   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 #   02110-1301, USA.
 
+# pistache
+# add_subdirectory(pistache)
+
 # gtest
 set(BUILD_SHARED_LIBS yes)
 set(INSTALL_GTEST OFF CACHE BOOL "do not install gtest")
