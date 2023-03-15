@@ -41,7 +41,7 @@ fi
 rm -rf cmake-build
 
 # preconfigure ccache
-CCACHE_DIR="/tmp/ccache/${STAGE_NAME}"
+CCACHE_DIR="/tmp/ccache/sanitize"
 CCACHE_TEMPDIR="/tmp/ccache-tmp"
 CCACHE_BASEDIR="$PWD"
 CCACHE_SLOPPINESS="file_macro"
