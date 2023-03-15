@@ -40,6 +40,19 @@ fi
 
 rm -rf cmake-build
 
+# preconfigure ccache
+CCACHE_DIR="/tmp/ccache/${STAGE_NAME}"
+CCACHE_TEMPDIR="/tmp/ccache-tmp"
+CCACHE_BASEDIR="$PWD"
+CCACHE_SLOPPINESS="file_macro"
+
+# central ccache cache
+CCACHE_REMOTE_STORAGE="http://jenkins.bareos.com:9090|layout=bazel|connect-timeout=100"
+CCACHE_REMOTE_ONLY=yes
+export CCACHE_DIR CCACHE_TEMPDIR CCACHE_BASEDIR CCACHE_SLOPPINESS \
+         CCACHE_REMOTE_STORAGE CCACHE_REMOTE_ONLY
+
+
 cmake \
   -S . \
   -B cmake-build \
