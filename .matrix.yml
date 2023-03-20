@@ -164,11 +164,11 @@ OS:
       ARCH:
         - x64
 
-  Solaris:
-    "11.4":
-      TYPE: solaris
-      ARCH:
-        - i386
+  # Solaris:
+  #   "11.4":
+  #     TYPE: solaris
+  #     ARCH:
+  #       - i386
 
   win:
     cross:
