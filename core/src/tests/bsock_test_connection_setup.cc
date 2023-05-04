@@ -25,6 +25,8 @@
 #  include "gtest/gtest.h"
 #endif
 
+#include <algorithm>
+
 #include "console/console_conf.h"
 #include "console/console_globals.h"
 #include "console/connect_to_director.h"
