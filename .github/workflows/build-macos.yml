@@ -1,0 +1,81 @@
+name: Build on MacOS (Test)
+run-name: "${{ inputs.run-name }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The resulting version number of the build"
+        required: true
+        type: string
+      timestamp:
+        description: "The timestamp of the version"
+        required: true
+        type: number
+      repository:
+        description: "The repository to retrieve the sources from"
+        required: false
+        type: string
+      ref:
+        description: "The ref in the repository to checkout"
+        required: false
+        type: string
+      treeid:
+        description: "The tree-id that the checkout should have"
+        required: false
+        type: string
+      run-name:
+        description: "The workflow run's name"
+        required: false
+        type: string
+
+env:
+  target_dir: "${{ github.workspace }}/BUILD_RESULTS/MacOS"
+
+jobs:
+  build:
+    name: Build and test MacOS
+    runs-on: macos-12
+    steps:
+    - name: "Checkout source"
+      uses: actions/checkout@v3
+      with:
+        repository: "${{ inputs.repository || github.repository }}"
+        ref: "${{ inputs.ref || github.ref }}"
+    - name: "Check HEAD commit"
+      run: |
+        git cat-file -p HEAD
+    - name: Install dependencies
+      run: |
+        brew install jansson
+    - name: Inject version parameters
+      run: |
+        echo -e "set(VERSION_STRING \"$VERSION\")\nset(VERSION_TIMESTAMP \"$TIMESTAMP\")" >core/cmake/BareosVersion.cmake
+        cat core/cmake/BareosVersion.cmake
+      env:
+        VERSION: "${{ inputs.version }}"
+        TIMESTAMP: "${{ inputs.timestamp }}"
+    - name: Build package
+      run: |
+        cmake -S . -B cmake-build -Dclient-only=yes
+        cmake --build cmake-build -- package
+        ls -la cmake-build/*.pkg
+        mkdir -p "${{ env.target_dir }}"
+        mv cmake-build/*.pkg "${{ env.target_dir }}"
+        cp core/src/include/config.h "${{ env.target_dir }}"
+      env:
+        CFLAGS: -I/usr/local/include
+        CXXFLAGS: -I/usr/local/include
+    - name: CTest
+      run: |
+        cd cmake-build
+        result=0
+        ctest -V -S CTestScript.cmake
+        mv ./Testing "${{ env.target_dir }}"
+
+    - name: Upload package
+      uses: actions/upload-artifact@v3
+      with:
+        name: MacOS
+        path: ${{ env.target_dir }}
+        retention-days: 1
