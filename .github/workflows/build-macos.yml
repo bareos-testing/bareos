@@ -44,7 +44,17 @@ jobs:
         ref: "${{ inputs.ref || github.ref }}"
     - name: "Check HEAD commit"
       run: |
-        git cat-file -p HEAD
+        HAVE_TREE="$(git cat-file -p HEAD | awk '/^tree / { print $2; exit }')"
+        if [ -z "$WANT_TREE" ]; then
+          echo "Have tree $HAVE_TREE. No tree to compare with."
+        elif [ "$HAVE_TREE" = "$WANT_TREE" ]; then
+          echo "Have tree $HAVE_TREE, wanted $WANT_TREE. All OK!"
+        else
+          echo "Have tree $HAVE_TREE, wanted $WANT_TREE. Stopping build!"
+          exit 1
+        fi
+      env:
+        WANT_TREE: "${{ inputs.treeid }}"
     - name: Install dependencies
       run: |
         brew install jansson
