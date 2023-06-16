@@ -76,6 +76,7 @@ jobs:
       env:
         CFLAGS: -I/usr/local/include
         CXXFLAGS: -I/usr/local/include
+        CMAKE_BUILD_PARALLEL_LEVEL: 4
     - name: CTest
       run: |
         cd cmake-build
