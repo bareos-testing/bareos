@@ -30,7 +30,7 @@ on:
         type: string
 
 env:
-  target_dir: "${{ github.workspace }}/BUILD_RESULTS/MacOS"
+  artifact_dir: "${{ github.workspace }}/artifacts"
 
 jobs:
   build:
@@ -70,9 +70,9 @@ jobs:
         cmake -S . -B cmake-build -Dclient-only=yes
         cmake --build cmake-build -- package
         ls -la cmake-build/*.pkg
-        mkdir -p "${{ env.target_dir }}"
-        mv cmake-build/*.pkg "${{ env.target_dir }}"
-        cp core/src/include/config.h "${{ env.target_dir }}"
+        mkdir -p "${{ env.artifact_dir }}/BUILD_RESULTS/MacOS"
+        mv cmake-build/*.pkg "${{ env.artifact_dir }}/BUILD_RESULTS/MacOS"
+        cp core/src/include/config.h "${{ env.artifact_dir }}"
       env:
         CFLAGS: -I/usr/local/include
         CXXFLAGS: -I/usr/local/include
@@ -81,11 +81,11 @@ jobs:
         cd cmake-build
         result=0
         ctest -V -S CTestScript.cmake
-        mv ./Testing "${{ env.target_dir }}"
+        mv ./Testing "${{ env.artifact_dir }}"
 
     - name: Upload package
       uses: actions/upload-artifact@v3
       with:
         name: MacOS
-        path: ${{ env.target_dir }}
+        path: ${{ env.artifact_dir }}
         retention-days: 1
