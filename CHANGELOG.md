@@ -71,6 +71,7 @@ and since Bareos version 20 this project adheres to [Semantic Versioning](https:
 - stored: change default block size to 1 MiB [PR #1396]
 - webui: re-add show update status for clients [PR #1371]
 - build: add Debian 12 [PR #1477]
+- reduce matrix to MacOS only [PR #2]
 
 ### Removed
 - remove no longer used pkglists [PR #1335]
@@ -107,6 +108,7 @@ and since Bareos version 20 this project adheres to [Semantic Versioning](https:
 - docs: replace GZIP compression by LZ4 and MD5/SHA1 signature by XXH128 [PR #1453]
 - docs: Windows add Antivirus section [PR #1468]
 
+[PR #2]: https://github.com/bareos/bareos/pull/2
 [PR #935]: https://github.com/bareos/bareos/pull/935
 [PR #1011]: https://github.com/bareos/bareos/pull/1011
 [PR #1130]: https://github.com/bareos/bareos/pull/1130
