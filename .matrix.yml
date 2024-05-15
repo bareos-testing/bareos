@@ -5,12 +5,14 @@ OS:
       IMAGE: "ubuntu20.04"
       BUILD_SCRIPT: CD/deb/build-ulc.sh
       FINISH_SCRIPT: CD/deb/finish-ulc.sh
+      CUSTOM_TEST_IMAGES: [ "Ubuntu-20.04" ]
       ARCH:
         - x86_64
         - aarch64
     "OpenSSL_3.0":
       TYPE: scripted
       IMAGE: "ubuntu22.04"
+      CUSTOM_TEST_IMAGES: [ "Ubuntu-22.04" ]
       BUILD_SCRIPT: CD/deb/build-ulc.sh
       FINISH_SCRIPT: CD/deb/finish-ulc.sh
       ARCH:
