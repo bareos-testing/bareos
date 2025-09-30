@@ -36,4 +36,9 @@ message("CCACHE_CMDLINE: ${CCACHE_CMDLINE}")
 message("CMAKE_C_COMPILER_LAUNCHER: ${CMAKE_C_COMPILER_LAUNCHER}")
 message("CMAKE_CXX_COMPILER_LAUNCHER: ${CMAKE_CXX_COMPILER_LAUNCHER}")
 
-add_custom_target(ccache-config COMMENT dump ccache config COMMAND ccache -p)
+add_custom_target(
+  ccache-config ALL
+  COMMENT dump
+  ccache config
+  COMMAND ccache -p
+)
