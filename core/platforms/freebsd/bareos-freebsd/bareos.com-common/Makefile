@@ -15,6 +15,7 @@ LIB_DEPENDS+= liblzo2.so:archivers/lzo2 \
 post-patch:
 	@echo post-patch ${PORTNAME}${PKGNAMESUFFIX} via master package in ${MASTERDIR}
 	${REINPLACE_CMD} -e 's|^pg_dump|/usr/local/bin/pg_dump|g' ${WRKSRC}/core/src/cats/make_catalog_backup.in
+	ccache -p
 
 post-install:
 	@echo post-install ${PORTNAME}${PKGNAMESUFFIX} via master package in ${MASTERDIR}
