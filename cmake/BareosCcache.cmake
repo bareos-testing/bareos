@@ -27,6 +27,8 @@ if(CCACHE_PROGRAM)
     list(APPEND CCACHE_CMDLINE "hash_dir=false")
   endif()
   list(APPEND CCACHE_CMDLINE "namespace=bareos")
+  list(APPEND CCACHE_CMDLINE "debug=true")
+  list(APPEND CCACHE_CMDLINE "debug_dir=/tmp/ccache-debug")
   set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_CMDLINE}")
   set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_CMDLINE}")
 endif()
@@ -35,10 +37,3 @@ message("CCACHE_PROGRAM: ${CCACHE_PROGRAM}")
 message("CCACHE_CMDLINE: ${CCACHE_CMDLINE}")
 message("CMAKE_C_COMPILER_LAUNCHER: ${CMAKE_C_COMPILER_LAUNCHER}")
 message("CMAKE_CXX_COMPILER_LAUNCHER: ${CMAKE_CXX_COMPILER_LAUNCHER}")
-
-add_custom_target(
-  ccache-config ALL
-  COMMENT dump
-  ccache config
-  COMMAND ccache -p
-)
