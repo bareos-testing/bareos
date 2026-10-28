@@ -360,9 +360,14 @@ class SeleniumTest(unittest.TestCase):
         # by using the arrow-keys.
         pathlist = self.restorefile.split("/")
         for i in pathlist[:-1]:
-            self.wait_for_element(
-                By.XPATH, '//a[contains(text(),"%s/")]' % i
-            ).send_keys(Keys.ARROW_RIGHT)
+            old = self.wait_for_element(By.XPATH, '//a[contains(text(), "%s/")]' % i)
+            new = self.wait_for_element(By.XPATH, '//a[text() = "%s/"]' % i)
+            self.assertEqual(
+                old,
+                new,
+                msg=f"new = {self.describe_element(new)}, old = {self.describe_element(old)}",
+            )
+            new.send_keys(Keys.ARROW_RIGHT)
         self.wait_for_element(
             By.XPATH, '//a[contains(text(),"%s")]' % pathlist[-1]
         ).click()
@@ -637,6 +642,26 @@ class SeleniumTest(unittest.TestCase):
             alert = self.driver.switch_to_alert()
             self.assertEqual(confirmation, alert.text)
             alert.accept()
+
+    def describe_element(self, element, max_html=300, max_text=60):
+        text = " ".join((element.text or "").split())
+        if len(text) > max_text:
+            text = text[: max_text - 3] + "..."
+
+        html = element.get_attribute("outerHTML") or ""
+        if len(html) > max_html:
+            html = html[:max_html] + "..."
+        html = " ".join(html.split())
+
+        return (
+            f"<{element.tag_name} "
+            f"id={element.get_attribute('id')!r} "
+            f"name={element.get_attribute('name')!r} "
+            f"class={element.get_attribute('class')!r} "
+            f"text={text!r} "
+            f"rect={element.rect}> "
+            f"{html}"
+        )
 
     def wait_for_element(self, by, value):
         logger = logging.getLogger()
