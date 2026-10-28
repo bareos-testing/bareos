@@ -344,6 +344,25 @@ class SeleniumTest(unittest.TestCase):
             )
         self.logout()
 
+    def expand_subtree(self, anchor):
+        # the anchor has a li parent, and some siblings.
+        # is jstree-open is a sibling, then its already open, so there is
+        # nothing to do
+        # In any case, it should have a jstree-ocl sibling, clicking on it
+        # toggles the tree state (expanded <> not expanded)
+        # so afterwards it should be expanded
+
+        li = anchor.find_element(By.XPATH, "./ancestor::li[1]")
+        classes = (li.get_attribute("class") or "").split()
+
+        if "jstree-leaf" in classes:
+            raise ElementNotFoundException("node is a leaf, nothing to expand")
+        if "jstree-open" in classes:
+            return li
+
+        li.find_element(By.XPATH, "./i[contains(@class,'jstree-ocl')]").click()
+        return li
+
     def test_restore(self):
         # Login
         self.login()
@@ -367,7 +386,7 @@ class SeleniumTest(unittest.TestCase):
                 new,
                 msg=f"new = {self.describe_element(new)}, old = {self.describe_element(old)}",
             )
-            new.send_keys(Keys.ARROW_RIGHT)
+            self.expand_subtree(new)
         self.wait_for_element(
             By.XPATH, '//a[contains(text(),"%s")]' % pathlist[-1]
         ).click()
