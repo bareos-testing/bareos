@@ -89,10 +89,6 @@ export function buildClientDetailsQuery({
 export function resolveClientsListQuery(query) {
   const nextQuery = {}
 
-  if (typeof query?.clientsTab === 'string' && query.clientsTab && query.clientsTab !== 'list') {
-    nextQuery.tab = query.clientsTab
-  }
-
   if (typeof query?.clientsScopeDirector === 'string' && query.clientsScopeDirector) {
     nextQuery.scopeDirector = query.clientsScopeDirector
   }
@@ -153,4 +149,57 @@ export function withClientsScopeDirectorQuery(query, director) {
   }
 
   return nextQuery
+}
+
+export function clientBackupStatusCode(client, warningFailedJobs, historyAvailable = true) {
+  if (!client.enabled) return 'disabled'
+  if (!historyAvailable) return 'unavailable'
+  if (['E', 'f'].includes(client.lastBackup?.status)) return 'failed'
+  if (['R', 'l'].includes(client.lastBackup?.status)) return 'running'
+  if ((client.failureStreak ?? 0) >= warningFailedJobs) return 'warning'
+  if (!client.lastBackup) return 'unknown'
+  return 'ok'
+}
+
+export function clientVersionStatusPresentation(status) {
+  const knownStatuses = {
+    uptodate: { label: 'OK', color: 'positive' },
+    update_required: { label: 'Update available', color: 'warning' },
+    upgrade_required: { label: 'Upgrade required', color: 'negative' },
+  }
+  return knownStatuses[status] ?? { label: 'Unknown', color: 'grey-6' }
+}
+
+function normalizedStatusLines(text) {
+  return String(text ?? '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+}
+
+export function parseClientStatusSummary(text) {
+  const lines = normalizedStatusLines(text)
+  const normalizedText = lines.join('\n')
+  const lowerText = normalizedText.toLowerCase()
+  const versionMatch = normalizedText.match(/\b(?:bareos-fd\s+)?version:\s*([^\n]+)/i)
+  const runningJobsMatch = normalizedText.match(/\b(\d+)\s+job[s]?\s+running\b/i)
+  const runningJobs = lowerText.includes('no jobs running')
+    ? 0
+    : (runningJobsMatch ? Number(runningJobsMatch[1]) : null)
+  const warningLines = lines.filter(line => (
+    /\b(?:warnings?|warn|alert|could not|cannot)\b/i.test(line)
+    && !/\b(?:errors?|warnings?)\s*:\s*0\b/i.test(line)
+  ))
+  const errorLines = lines.filter(line => (
+    /\b(?:errors?|fatal|failed|failure|connection refused|unable to connect)\b/i.test(line)
+    && !/\b(?:errors?|warnings?)\s*:\s*0\b/i.test(line)
+  ))
+
+  return {
+    reachable: !/\b(?:connection refused|unable to connect|failed to connect|failed authorization)\b/i.test(normalizedText),
+    version: versionMatch?.[1]?.trim() ?? '',
+    runningJobs,
+    warningCount: warningLines.length,
+    errorCount: errorLines.length,
+  }
 }
