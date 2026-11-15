@@ -33,11 +33,15 @@ const isMultiDirectorProfile
   = process.env.BAREOS_WEBUI_PROXY_ENABLE_MULTI_DIRECTOR === '1'
 const LOGIN_ATTEMPTS = 3
 const LOGIN_RESULT_TIMEOUT_MS = 10_000
+const directorResponseCompletions = new WeakMap()
 
 // Exercise the public application with an isolated, entirely intercepted
 // transport. In particular, no mutation can reach a real Director.
 async function browserFixture(page, commandHandler = () => undefined) {
   const directors = ['bareos-dir', 'bareos-dir-2']
+  const responseCompletions = new Map()
+  directorResponseCompletions.set(page, responseCompletions)
+  let responseSequence = 0
   await page.route('**/api/**', route => route.fulfill({
     json: route.request().url().endsWith('/directors')
       ? { type: 'director_list', directors }
@@ -45,6 +49,12 @@ async function browserFixture(page, commandHandler = () => undefined) {
   }))
   await page.routeWebSocket(/\/ws/, socket => {
     let director = directors[0]
+    const responseTokens = new Set()
+    socket.onClose(() => {
+      for (const token of responseTokens) {
+        responseCompletions.get(token)?.resolve()
+      }
+    })
     socket.onMessage(async message => {
       const request = JSON.parse(message)
       if (request.type === 'session') {
@@ -53,8 +63,17 @@ async function browserFixture(page, commandHandler = () => undefined) {
         return
       }
       if (request.type !== 'command') return
+      const responseToken = String(++responseSequence)
+      let resolveCompletion
+      const completion = new Promise(resolve => { resolveCompletion = resolve })
+      let resolveSent
+      const sent = new Promise(resolve => { resolveSent = resolve })
+      responseCompletions.set(responseToken, {
+        promise: completion, resolve: resolveCompletion, sent,
+      })
+      responseTokens.add(responseToken)
       try {
-        const data = await commandHandler(request.command, director)
+        const data = await commandHandler(request.command, director, { responseToken, socket })
         const job = {
           jobid: '101', name: 'Browser-fixture', jobtype: 'B', jobstatus: 'T',
           comment: 'Original comment',
@@ -68,13 +87,22 @@ async function browserFixture(page, commandHandler = () => undefined) {
                   : {}
           ),
         }))
+        resolveSent()
       } catch (error) {
         socket.send(JSON.stringify({ type: 'error', id: request.id, message: error.message }))
+        resolveSent()
       }
     })
   })
   await page.goto('/#/dashboard')
   await expect(page.getByTestId('director-status-label')).toContainText('Connected')
+}
+
+async function waitForDirectorResponseProcessing(page, responseToken) {
+  const completion = directorResponseCompletions.get(page)?.get(responseToken)
+  if (!completion) throw new Error(`Unknown Director response token: ${responseToken}`)
+  await completion.promise
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)))
 }
 
 test('browser regression: column checkboxes have accessible names', async ({ page }) => {
@@ -85,6 +113,363 @@ test('browser regression: column checkboxes have accessible names', async ({ pag
   for (const checkbox of await page.getByRole('checkbox').all()) {
     await expect(checkbox).toHaveAccessibleName(/\S/)
   }
+})
+
+test('browser regression: schedule and job toggles refresh upcoming runs', async ({ page }) => {
+  let scheduleEnabled = true
+  let jobEnabled = true
+  let upcomingPreviewCalls = 0
+
+  await browserFixture(page, command => {
+    if (command === 'show schedules') {
+      return { schedules: { daily: { name: 'DailyCycle', enabled: scheduleEnabled } } }
+    }
+    if (command === 'show schedules all') {
+      return { jobs: { daily: { name: 'DailyJob', schedule: 'DailyCycle', enabled: jobEnabled } } }
+    }
+    if (command === '.schedule') {
+      return { schedules: [{ name: 'DailyCycle', enabled: scheduleEnabled }] }
+    }
+    if (command.startsWith('status scheduler days=')) {
+      if (command === 'status scheduler days=0,60') upcomingPreviewCalls += 1
+      return {
+        schedules: [{
+          name: 'DailyCycle',
+          enabled: scheduleEnabled,
+          jobs: [{ name: 'DailyJob', enabled: jobEnabled }],
+        }],
+        preview: [{
+          job: 'DailyJob',
+          schedule: 'DailyCycle',
+          datetime: '2026-05-28 00:00:00',
+          runtime: Date.now() / 1000 + 3600,
+        }],
+      }
+    }
+    if (command === 'disable schedule="DailyCycle"') scheduleEnabled = false
+    if (command === 'enable schedule="DailyCycle"') scheduleEnabled = true
+    if (command === 'disable job="DailyJob"') jobEnabled = false
+    if (command === 'enable job="DailyJob"') jobEnabled = true
+  })
+
+  await openNav(page, 'nav-schedules', /#\/schedules/)
+  await expect(page.getByText('Scheduler Jobs', { exact: true })).toBeVisible()
+  await expect.poll(() => upcomingPreviewCalls).toBeGreaterThan(0)
+
+  const scheduleCalls = upcomingPreviewCalls
+  const scheduleGroup = page.locator('.sched-group-header').first()
+  await scheduleGroup.getByRole('button', { name: 'Expand group', exact: true }).click()
+  await scheduleGroup.locator('.q-toggle').click()
+  await expect.poll(() => upcomingPreviewCalls).toBeGreaterThan(scheduleCalls)
+
+  const jobCalls = upcomingPreviewCalls
+  const jobRow = page.locator('tbody tr').filter({ hasText: 'DailyJob' })
+  await jobRow.locator('.q-toggle').click()
+  await expect.poll(() => upcomingPreviewCalls).toBeGreaterThan(jobCalls)
+})
+
+test('browser regression: schedule All selection survives an empty scope', async ({ page }) => {
+  await browserFixture(page, (command, director) => {
+    if (!command.startsWith('status scheduler days=')) return
+    return {
+      schedules: director === 'bareos-dir'
+        ? [{ name: 'DailyCycle', enabled: true, jobs: [] }]
+        : [],
+      preview: [],
+    }
+  })
+
+  await openNav(page, 'nav-schedules', /#\/schedules/)
+  const scheduleCheckboxes = page.getByRole('checkbox')
+  await expect(scheduleCheckboxes).toHaveCount(1)
+  await expect(scheduleCheckboxes.first()).toHaveAttribute('aria-checked', 'true')
+
+  const scopeMenu = page.getByTestId('director-scope-menu')
+  await page.getByTestId('director-scope-control').click()
+  await scopeMenu.getByRole('button', { name: 'Select all' }).click()
+  await scopeMenu.getByText('bareos-dir', { exact: true }).first().click()
+  await page.keyboard.press('Escape')
+  await expect(scheduleCheckboxes).toHaveCount(0)
+
+  await page.getByTestId('director-scope-control').click()
+  await scopeMenu.getByRole('button', { name: 'Select all' }).click()
+  await scopeMenu.getByText('bareos-dir-2', { exact: true }).first().click()
+  await page.keyboard.press('Escape')
+  await expect(scheduleCheckboxes).toHaveCount(1)
+  await expect(scheduleCheckboxes.first()).toHaveAttribute('aria-checked', 'true')
+})
+
+test('browser regression: upcoming runs ignore an obsolete Director scope', async ({ page }) => {
+  let releaseObsoletePreview
+  let obsoletePreviewResponseToken
+  let firstDirectorPreviewCalls = 0
+
+  await browserFixture(page, (command, director, { responseToken }) => {
+    if (command === 'status scheduler days=0,60') {
+      if (director === 'bareos-dir') {
+        firstDirectorPreviewCalls += 1
+        if (firstDirectorPreviewCalls === 1) {
+          obsoletePreviewResponseToken = responseToken
+          return new Promise(resolve => {
+            releaseObsoletePreview = () => resolve({
+              preview: [{
+                job: 'Old job',
+                schedule: 'Old Director',
+                datetime: '2026-05-28 01:00:00',
+                runtime: Date.now() / 1000 + 3600,
+              }],
+            })
+          })
+        }
+
+        return {
+          preview: [{
+            job: 'Current job',
+            schedule: 'Current Director',
+            datetime: '2026-05-28 02:00:00',
+            runtime: Date.now() / 1000 + 7200,
+          }],
+        }
+      }
+
+      return {
+        preview: [{
+          job: 'Other job',
+          schedule: 'Other Director',
+          datetime: '2026-05-28 03:00:00',
+          runtime: Date.now() / 1000 + 10800,
+        }],
+      }
+    }
+
+    if (command.startsWith('status scheduler days=')) {
+      return { preview: [] }
+    }
+  })
+
+  await page.getByTestId('director-scope-control').click()
+  await page.getByTestId('director-scope-menu').getByRole('button', { name: 'Select all' }).click()
+  await page.keyboard.press('Escape')
+  await openNav(page, 'nav-schedules', /#\/schedules/)
+  await expect.poll(() => Boolean(releaseObsoletePreview)).toBe(true)
+
+  await page.getByTestId('director-scope-control').click()
+  await page.getByTestId('director-scope-menu').getByText('bareos-dir-2', { exact: true }).first().click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('director-scope-control')).toContainText('bareos-dir')
+  await expect.poll(() => firstDirectorPreviewCalls).toBeGreaterThan(1)
+  await expect(page.getByText(/Current Director/)).toBeVisible()
+
+  releaseObsoletePreview()
+  await waitForDirectorResponseProcessing(page, obsoletePreviewResponseToken)
+  await expect(page.getByText(/Current Director/)).toBeVisible()
+  await expect(page.getByText(/Old Director/)).toHaveCount(0)
+})
+
+test('browser regression: schedule status ignores an obsolete calendar range', async ({ page }) => {
+  let releaseObsoleteStatus
+  let obsoleteResponseToken
+  let obsoleteSocket
+  let settledSocket
+  let statusRequests = 0
+
+  await browserFixture(page, (command, _director, { responseToken, socket }) => {
+    if (!command.startsWith('status scheduler days=') || command === 'status scheduler days=0,60') {
+      return
+    }
+
+    statusRequests += 1
+    if (statusRequests === 1) {
+      obsoleteResponseToken = responseToken
+      obsoleteSocket = socket
+      return new Promise(resolve => {
+        releaseObsoleteStatus = () => resolve({
+          schedules: [{ name: 'ObsoleteRange', enabled: true, jobs: [] }],
+          preview: [],
+        })
+      })
+    }
+
+    if (statusRequests > 2) settledSocket = socket
+    return {
+      schedules: [{
+        name: statusRequests === 2 ? 'CurrentRange' : 'SettledRange',
+        enabled: true,
+        jobs: [],
+      }],
+      preview: [],
+    }
+  })
+
+  await page.getByTestId('director-scope-control').click()
+  const scopeMenu = page.getByTestId('director-scope-menu')
+  await scopeMenu.getByRole('button', { name: 'Select all' }).click()
+  await scopeMenu.getByText('bareos-dir-2', { exact: true }).first().click()
+  await page.keyboard.press('Escape')
+  await openNav(page, 'nav-schedules', /#\/schedules/)
+  await expect.poll(() => Boolean(releaseObsoleteStatus)).toBe(true)
+  await page.getByRole('button', { name: 'Next period' }).click()
+  await expect.poll(() => statusRequests).toBeGreaterThan(1)
+  const scheduleGroups = page.locator('.sched-group-header')
+  await expect(scheduleGroups).toContainText('CurrentRange')
+
+  // The next response is a same-socket barrier; record transient stale renders
+  // so its current result cannot hide an obsolete overwrite.
+  await page.evaluate(() => {
+    window.obsoleteScheduleSeen = false
+    window.obsoleteScheduleObserver = new MutationObserver(() => {
+      if ([...document.querySelectorAll('.sched-group-header')]
+        .some(header => header.textContent.includes('ObsoleteRange'))) {
+        window.obsoleteScheduleSeen = true
+      }
+    })
+    window.obsoleteScheduleObserver.observe(document.body, {
+      childList: true, subtree: true, characterData: true,
+    })
+  })
+  releaseObsoleteStatus()
+  await directorResponseCompletions.get(page).get(obsoleteResponseToken).sent
+  await page.getByRole('button', { name: 'Next period' }).click()
+  await expect.poll(() => statusRequests).toBeGreaterThan(2)
+  expect(settledSocket).toBe(obsoleteSocket)
+  await expect(scheduleGroups).toContainText('SettledRange')
+  await expect(scheduleGroups).not.toContainText('ObsoleteRange')
+  const obsoleteScheduleSeen = await page.evaluate(() => {
+    window.obsoleteScheduleObserver.disconnect()
+    return window.obsoleteScheduleSeen
+  })
+  expect(obsoleteScheduleSeen).toBe(false)
+})
+
+test('browser regression: clients list ignores an obsolete refresh', async ({ page }) => {
+  let releaseObsoleteClients
+  let obsoleteClientsResponseToken
+  let clientListRequests = 0
+
+  await browserFixture(page, (command, _director, { responseToken }) => {
+    if (command === 'llist clients') {
+      clientListRequests += 1
+      if (clientListRequests === 1) {
+        obsoleteClientsResponseToken = responseToken
+        return new Promise(resolve => {
+          releaseObsoleteClients = () => resolve({
+            clients: [{ name: 'ObsoleteClient' }],
+          })
+        })
+      }
+      return { clients: [{ name: 'CurrentClient' }] }
+    }
+    if (command === '.clients') return { clients: [] }
+    if (command.startsWith('llist jobs reverse limit=1000')) return { jobs: [] }
+  })
+
+  await openNav(page, 'nav-clients', /#\/clients/)
+  await expect.poll(() => Boolean(releaseObsoleteClients)).toBe(true)
+  await page.getByRole('button', { name: 'Refresh' }).click()
+  await expect(page.getByText('CurrentClient', { exact: true })).toHaveCount(2)
+
+  releaseObsoleteClients()
+  await waitForDirectorResponseProcessing(page, obsoleteClientsResponseToken)
+  await expect(page.getByText('ObsoleteClient', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('CurrentClient', { exact: true })).toHaveCount(2)
+})
+
+test('browser regression: client backup status distinguishes running from no history', async ({ page }) => {
+  await browserFixture(page, command => {
+    if (command === 'llist clients') {
+      return { clients: [{ name: 'RunningClient' }, { name: 'NewClient' }] }
+    }
+    if (command === '.clients') return { clients: [] }
+    if (command.startsWith('llist jobs reverse limit=1000')) {
+      return {
+        jobs: [{
+          jobid: '101',
+          name: 'Running backup',
+          client: 'RunningClient',
+          jobstatus: 'R',
+          starttime: '2026-05-28 10:00:00',
+        }],
+      }
+    }
+    if (command.startsWith('status scheduler days=')) return { schedules: [], preview: [] }
+  })
+
+  await openNav(page, 'nav-clients', /#\/clients/)
+  const runningClient = page.getByRole('row').filter({ hasText: 'RunningClient' }).first()
+  const newClient = page.getByRole('row').filter({ hasText: 'NewClient' }).first()
+  await expect(runningClient).toContainText('Running')
+  await expect(runningClient).not.toContainText('No backup history')
+  await expect(newClient).toContainText('No backup history')
+})
+
+test('browser regression: next run advances with the live clock', async ({ page }) => {
+  const now = Date.parse('2026-05-28T12:00:00Z')
+  await page.clock.install({ time: new Date(now) })
+
+  await browserFixture(page, command => {
+    if (command.startsWith('status scheduler days=')) {
+      return {
+        preview: [
+          {
+            job: 'SoonJob',
+            schedule: 'SoonSchedule',
+            datetime: '2026-05-28 12:00:30',
+            runtime: (now + 30_000) / 1000,
+          },
+          {
+            job: 'LaterJob',
+            schedule: 'LaterSchedule',
+            datetime: '2026-05-28 12:01:30',
+            runtime: (now + 90_000) / 1000,
+          },
+        ],
+      }
+    }
+  })
+
+  await openNav(page, 'nav-schedules', /#\/schedules/)
+  const stats = page.locator('.schedules-list-stats')
+  await expect(stats).toContainText('SoonSchedule')
+
+  await page.clock.fastForward(60_000)
+  await expect(stats).toContainText('LaterSchedule')
+  await expect(stats).not.toContainText('SoonSchedule')
+})
+
+test('browser regression: schedule selection follows scope and preserves None', async ({ page }) => {
+  await browserFixture(page, (command, director) => {
+    const schedule = director === 'bareos-dir' ? 'DailyCycle' : 'WeeklyCycle'
+    if (command.startsWith('status scheduler days=')) {
+      return { schedules: [{ name: schedule, enabled: true, jobs: [] }], preview: [] }
+    }
+  })
+
+  await page.getByTestId('director-scope-control').click()
+  await page.getByTestId('director-scope-menu').getByText('bareos-dir-2', { exact: true }).first().click()
+  await page.keyboard.press('Escape')
+  await openNav(page, 'nav-schedules', /#\/schedules/)
+  const scheduleCheckboxes = page.getByRole('checkbox')
+  await expect(scheduleCheckboxes).toHaveCount(1)
+  await expect(scheduleCheckboxes.first()).toHaveAttribute('aria-checked', 'true')
+
+  await page.getByTestId('director-scope-control').click()
+  await page.getByTestId('director-scope-menu').getByRole('button', { name: 'Select all' }).click()
+  await page.keyboard.press('Escape')
+  await expect(scheduleCheckboxes).toHaveCount(2)
+  for (const checkbox of await scheduleCheckboxes.all()) {
+    await expect(checkbox).toHaveAttribute('aria-checked', 'true')
+  }
+
+  await page.getByRole('button', { name: 'None', exact: true }).click()
+  for (const checkbox of await scheduleCheckboxes.all()) {
+    await expect(checkbox).toHaveAttribute('aria-checked', 'false')
+  }
+
+  await page.getByTestId('director-scope-control').click()
+  await page.getByTestId('director-scope-menu').getByText('bareos-dir-2', { exact: true }).first().click()
+  await page.keyboard.press('Escape')
+  await expect(scheduleCheckboxes).toHaveCount(1)
+  await expect(scheduleCheckboxes.first()).toHaveAttribute('aria-checked', 'false')
 })
 
 test('browser regression: log focus follows reused job routes', async ({ page }) => {
@@ -535,6 +920,124 @@ test('logs in and shows the dashboard', async ({ page }) => {
   await expect(recentJobsCard).toContainText('backup-bareos-fd')
   await expect(totalsCard).not.toContainText('Total Jobs0')
   await expect(totalsCard).not.toContainText('Total Bytes0 B')
+})
+
+test('advertises Bareos services unless the director is a subscription build', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByTestId('login-commercial-offering')).toBeVisible()
+  await expect(page.getByTestId('login-commercial-offering').getByTestId('commercial-offering-evaluation'))
+    .toHaveAttribute('href', 'https://www.bareos.com/try/')
+  const sash = page.getByTestId('unsupported-build-sash')
+  await expect(sash).toBeVisible()
+  await expect(sash).toHaveCSS('background-color', 'rgb(255, 179, 0)')
+
+  await login(page)
+  await page.goto('/#/director')
+  const binaryInfo = page.getByTestId('director-binary-info').first()
+  await expect(binaryInfo).toBeVisible()
+  const isSubscription = /subscription/i.test(await binaryInfo.innerText())
+  const statusbarOffering = page.getByTestId('statusbar-commercial-offering')
+  if (isSubscription) {
+    await expect(statusbarOffering).toHaveCount(0)
+    await expect(page.getByTestId('unsupported-build-ribbon')).toHaveCount(0)
+    return
+  }
+  await expect(statusbarOffering).toBeVisible()
+  await expect(statusbarOffering).toHaveAttribute('href', 'https://www.bareos.com/try/')
+  await expect(statusbarOffering).toHaveCSS('color', 'rgb(255, 202, 40)')
+  await expect(page.getByTestId('unsupported-build-sash')).toHaveCount(0)
+  await expect(page.locator('body')).toHaveClass(/bareos-unsupported-build/)
+  await expect(page.locator('header.bareos-toolbar')).toHaveCSS(
+    'background-color',
+    'rgb(0, 117, 190)',
+  )
+  await expect(page.locator('footer.bareos-statusbar')).toHaveCSS(
+    'background-color',
+    'rgb(0, 86, 139)',
+  )
+  await expect(page).toHaveTitle('Bareos (unsupported build)')
+  const ribbon = page.getByTestId('unsupported-build-ribbon')
+  await expect(ribbon).toBeVisible()
+  await expect(ribbon).toHaveCSS('background-color', 'rgb(255, 179, 0)')
+  await expect(ribbon.getByRole('link'))
+    .toHaveAttribute('href', 'https://www.bareos.com/try/')
+  await expect(ribbon).toContainText(/not for production use/i)
+  await page.getByTestId('unsupported-build-ribbon-close').click()
+  await expect(ribbon).toHaveCount(0)
+  const toast = page.locator('.unsupported-build-toast')
+  await expect(toast).toBeVisible()
+  await expect(toast.getByRole('button', { name: 'Try for free' })).toBeVisible()
+  await expect(toast.getByRole('button', { name: 'Buy a subscription' })).toBeVisible()
+  await page.reload()
+  await expect(page.getByTestId('director-binary-info').first()).toBeVisible()
+  await expect(ribbon).toHaveCount(0)
+  await expect(toast).toHaveCount(0)
+  await page.getByTestId('account-menu').click()
+  await expect(page.getByTestId('menu-offering-evaluation'))
+    .toHaveAttribute('href', 'https://www.bareos.com/try/')
+  await expect(page.getByTestId('menu-offering-subscription')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.getByRole('tab', { name: 'Subscription' }).click()
+  await expect(page.getByTestId('commercial-offering-card')).toBeVisible()
+  await expect(page.getByTestId('commercial-offering-evaluation'))
+    .toHaveAttribute('href', 'https://www.bareos.com/try/')
+  await expect(page.getByTestId('commercial-offering-expert-circle'))
+    .toHaveAttribute('href', 'https://www.bareos.com/meet/')
+})
+
+test('loads translations from the Vue JSON catalogs', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('.login-language-select').click()
+  await page.getByRole('option', { name: /German/ }).click()
+  await expect(page.getByTestId('login-submit')).toContainText('Anmelden')
+  await expect(page.getByTestId('login-username')).toHaveAttribute('aria-label', 'Benutzername')
+  await expect(page.getByTestId('login-password')).toHaveAttribute('aria-label', 'Passwort')
+})
+
+async function reportSubscriptionBuild(page) {
+  await page.routeWebSocket(/.*/, (ws) => {
+    const server = ws.connectToServer()
+    server.onMessage((message) => {
+      try {
+        const parsed = JSON.parse(message)
+        if (parsed?.type === 'response' && parsed.data?.header?.binary_info !== undefined) {
+          parsed.data.header.binary_info = 'Bareos subscription'
+          ws.send(JSON.stringify(parsed))
+          return
+        }
+      } catch {
+        // Non-JSON frames must be forwarded unchanged.
+      }
+      ws.send(message)
+    })
+  })
+}
+
+test('hides the service advertisement for subscription builds', async ({ page }) => {
+  await reportSubscriptionBuild(page)
+  await login(page)
+  await page.goto('/#/director')
+  await expect(page.getByTestId('director-binary-info').first())
+    .toHaveText(/Bareos subscription/)
+  await expect(page.getByTestId('statusbar-commercial-offering')).toHaveCount(0)
+  await expect(page.getByTestId('unsupported-build-ribbon')).toHaveCount(0)
+  await expect(page.getByTestId('unsupported-build-sash')).toHaveCount(0)
+  await expect(page.locator('body')).not.toHaveClass(/bareos-unsupported-build/)
+  await expect(page).toHaveTitle('Bareos')
+  await page.getByTestId('account-menu').click()
+  await expect(page.getByTestId('menu-offering-evaluation')).toHaveCount(0)
+  await expect(page.getByTestId('menu-offering-support')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await page.getByRole('tab', { name: 'Subscription' }).click()
+  await expect(page.getByRole('link', { name: 'Get Official Support' })).toBeVisible()
+  await expect(page.getByTestId('commercial-offering-card')).toHaveCount(0)
+  expect(await page.evaluate(() => localStorage.getItem('bareos-webui.buildKind')))
+    .toBe('subscription')
+  await page.getByTestId('account-menu').click()
+  await page.locator('.q-menu').getByText('Logout', { exact: true }).click()
+  await expect(page.getByTestId('login-form')).toBeVisible()
+  await expect(page.getByTestId('login-commercial-offering')).toHaveCount(0)
+  await expect(page.getByTestId('unsupported-build-sash')).toHaveCount(0)
 })
 
 test('shows a login error for invalid credentials', async ({ page }) => {
@@ -1007,7 +1510,7 @@ test('covers schedules and director tabs through the director connection', async
   await expect(page.getByText('Scheduler Jobs', { exact: true })).toBeVisible()
   await expect(page.getByText('Scheduler Preview', { exact: true })).toBeVisible()
 
-  await page.getByRole('tab', { name: 'Show' }).click()
+  await page.getByRole('tab', { name: 'Definitions' }).click()
   await expect(
     page.locator('.q-tab-panel:visible').getByText('Schedules', { exact: true })
   ).toBeVisible()
@@ -1019,7 +1522,7 @@ test('covers schedules and director tabs through the director connection', async
   await page.getByRole('tab', { name: 'Messages' }).click()
   await expect(page.getByText('Director Messages', { exact: true })).toBeVisible()
 
-  await page.getByRole('tab', { name: 'Catalog Maintenance' }).click()
+  await page.getByRole('tab', { name: 'Catalog', exact: true }).click()
   await expect(page.getByText('Jobs With No Data', { exact: true })).toBeVisible()
   await expect(page.getByText('Prune Expired Records', { exact: true })).toBeVisible()
 })
