@@ -153,7 +153,7 @@ class SeleniumVueTest(ScreenshotTestCase):
         self.login()
         self.wait_for(By.XPATH, '//*[normalize-space(.)="Running Jobs"]')
         self.assertIn(
-            "Most recent job status per job name",
+            "Recent Jobs",
             self.driver.page_source,
         )
 
