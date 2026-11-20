@@ -89,6 +89,8 @@ OS:
       IMAGE: rhel10
       CUSTOM_TEST_IMAGES: [ RHEL ]
       ARCH:
+        - aarch64
+        - ppc64le
         - x86_64
     "9":
       TYPE: rpm
